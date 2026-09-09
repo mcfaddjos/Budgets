@@ -16,6 +16,7 @@ export default function LoginScreen() {
   const [serverUrlInput, setServerUrlInput] = useState(serverUrl);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [inviteCode, setInviteCode] = useState("");
   const [mode, setMode] = useState("login"); // 'login' | 'register'
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -26,11 +27,15 @@ export default function LoginScreen() {
       setError("Enter a username and password.");
       return;
     }
+    if (mode === "register" && !inviteCode.trim()) {
+      setError("Enter the invite code.");
+      return;
+    }
     setBusy(true);
     try {
       await updateServerUrl(serverUrlInput.trim());
       if (mode === "login") await login(username.trim(), password);
-      else await register(username.trim(), password);
+      else await register(username.trim(), password, inviteCode.trim());
     } catch (err) {
       setError(err.message);
     } finally {
@@ -52,7 +57,7 @@ export default function LoginScreen() {
           style={styles.input}
           value={serverUrlInput}
           onChangeText={setServerUrlInput}
-          placeholder="http://192.168.1.42:4000"
+          placeholder="https://script.google.com/macros/s/.../exec"
           autoCapitalize="none"
           autoCorrect={false}
           keyboardType="url"
@@ -76,6 +81,20 @@ export default function LoginScreen() {
           placeholder="••••••••"
           secureTextEntry
         />
+
+        {mode === "register" ? (
+          <>
+            <Text style={styles.label}>Invite Code</Text>
+            <TextInput
+              style={styles.input}
+              value={inviteCode}
+              onChangeText={setInviteCode}
+              placeholder="Ask whoever set this up"
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </>
+        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 

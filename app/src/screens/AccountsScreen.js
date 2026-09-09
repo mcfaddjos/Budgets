@@ -22,6 +22,7 @@ export default function AccountsScreen() {
   const [institution, setInstitution] = useState("");
   const [type, setType] = useState("credit");
   const [importingId, setImportingId] = useState(null);
+  const [syncingId, setSyncingId] = useState(null);
 
   const loadAccounts = useCallback(async () => {
     try {
@@ -82,6 +83,21 @@ export default function AccountsScreen() {
     }
   }
 
+  async function handleSyncQuickAdd(account) {
+    setSyncingId(account.id);
+    try {
+      const summary = await api.importQuickAddTransactions(account.id);
+      Alert.alert(
+        "Quick Add synced",
+        `${summary.imported} new transaction(s), ${summary.duplicates} already imported, ${summary.uncategorized} uncategorized.`
+      );
+    } catch (err) {
+      Alert.alert("Sync failed", err.message);
+    } finally {
+      setSyncingId(null);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -106,6 +122,15 @@ export default function AccountsScreen() {
             >
               <Text style={styles.importButtonText}>
                 {importingId === item.id ? "Importing…" : "Import Statement (CSV)"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.secondaryImportButton}
+              onPress={() => handleSyncQuickAdd(item)}
+              disabled={syncingId === item.id}
+            >
+              <Text style={styles.secondaryImportButtonText}>
+                {syncingId === item.id ? "Syncing…" : "Sync Quick Add"}
               </Text>
             </TouchableOpacity>
           </View>
@@ -192,6 +217,15 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   importButtonText: { color: "#fff", fontWeight: "600" },
+  secondaryImportButton: {
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#1a6ed8",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  secondaryImportButtonText: { color: "#1a6ed8", fontWeight: "600" },
   addButton: {
     margin: 16,
     marginTop: 8,

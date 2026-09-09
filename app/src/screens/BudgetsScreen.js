@@ -26,6 +26,7 @@ export default function BudgetsScreen() {
   const [refreshing, setRefreshing] = useState(false);
   const [editing, setEditing] = useState(null);
   const [amountInput, setAmountInput] = useState("");
+  const [syncing, setSyncing] = useState(false);
 
   const month = currentMonth();
 
@@ -67,6 +68,22 @@ export default function BudgetsScreen() {
     }
   }
 
+  async function handleSyncQuickAdd() {
+    setSyncing(true);
+    try {
+      const summary = await api.importQuickAddBudgets();
+      Alert.alert(
+        "Quick Add synced",
+        `${summary.applied} budget(s) applied, ${summary.skippedUnknownCategory} skipped (unknown category).`
+      );
+      load();
+    } catch (err) {
+      Alert.alert("Sync failed", err.message);
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <View style={styles.container}>
       <View style={styles.summary}>
@@ -80,6 +97,9 @@ export default function BudgetsScreen() {
             color={data.totals.variance < 0 ? "#c0392b" : "#2a8a4a"}
           />
         </View>
+        <TouchableOpacity style={styles.syncButton} onPress={handleSyncQuickAdd} disabled={syncing}>
+          <Text style={styles.syncButtonText}>{syncing ? "Syncing…" : "Sync Quick Add"}</Text>
+        </TouchableOpacity>
       </View>
 
       <FlatList
@@ -152,6 +172,15 @@ const styles = StyleSheet.create({
   summary: { backgroundColor: "#fff", padding: 16, borderBottomWidth: 1, borderBottomColor: "#eee" },
   summaryLabel: { fontSize: 13, color: "#888", marginBottom: 8 },
   summaryRow: { flexDirection: "row", justifyContent: "space-between" },
+  syncButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#1a6ed8",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  syncButtonText: { color: "#1a6ed8", fontWeight: "600" },
   stat: { alignItems: "center", flex: 1 },
   statLabel: { fontSize: 12, color: "#999" },
   statValue: { fontSize: 18, fontWeight: "700", marginTop: 2 },
