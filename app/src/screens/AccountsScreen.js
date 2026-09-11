@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   RefreshControl,
@@ -12,23 +13,27 @@ import {
 import * as DocumentPicker from "expo-document-picker";
 import { api } from "../api/client";
 
-const ACCOUNT_TYPES = ["credit", "checking", "savings"];
+const ACCOUNT_TYPES = ["checking", "savings"];
 
 export default function AccountsScreen() {
   const [accounts, setAccounts] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("");
-  const [type, setType] = useState("credit");
+  const [type, setType] = useState("checking");
   const [importingId, setImportingId] = useState(null);
   const [syncingId, setSyncingId] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const loadAccounts = useCallback(async () => {
     try {
       setAccounts(await api.getAccounts());
     } catch (err) {
       Alert.alert("Couldn't load accounts", err.message);
+    } finally {
+      setLoading(false);
     }
   }, []);
 
@@ -51,7 +56,7 @@ export default function AccountsScreen() {
       await api.createAccount({ name: name.trim(), type, institution: institution.trim() || null });
       setName("");
       setInstitution("");
-      setType("credit");
+      setType("checking");
       setShowForm(false);
       loadAccounts();
     } catch (err) {
@@ -98,44 +103,81 @@ export default function AccountsScreen() {
     }
   }
 
+  function handleDelete(account) {
+    Alert.alert(
+      "Delete account?",
+      `"${account.name}" and all of its transactions will be permanently deleted. This can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            setDeletingId(account.id);
+            try {
+              await api.deleteAccount(account.id);
+              setAccounts((prev) => prev.filter((a) => a.id !== account.id));
+            } catch (err) {
+              Alert.alert("Couldn't delete account", err.message);
+            } finally {
+              setDeletingId(null);
+            }
+          },
+        },
+      ]
+    );
+  }
+
   return (
     <View style={styles.container}>
-      <FlatList
-        data={accounts}
-        keyExtractor={(item) => String(item.id)}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No accounts yet. Add your first credit card below.</Text>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.cardTitle}>{item.name}</Text>
-              <Text style={styles.badge}>{item.type}</Text>
+      {loading ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator />
+          <Text style={styles.loadingText}>Loading accounts…</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={accounts}
+          keyExtractor={(item) => String(item.id)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <Text style={styles.empty}>No accounts yet. Add your first account below.</Text>
+          }
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.cardTitle}>{item.name}</Text>
+                <View style={styles.cardHeaderRight}>
+                  <Text style={styles.badge}>{item.type}</Text>
+                  <TouchableOpacity onPress={() => handleDelete(item)} disabled={deletingId === item.id}>
+                    <Text style={styles.deleteText}>{deletingId === item.id ? "…" : "Delete"}</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+              {item.institution ? <Text style={styles.cardSubtitle}>{item.institution}</Text> : null}
+              <TouchableOpacity
+                style={styles.importButton}
+                onPress={() => handleImport(item)}
+                disabled={importingId === item.id}
+              >
+                <Text style={styles.importButtonText}>
+                  {importingId === item.id ? "Importing…" : "Import Statement (CSV)"}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.secondaryImportButton}
+                onPress={() => handleSyncQuickAdd(item)}
+                disabled={syncingId === item.id}
+              >
+                <Text style={styles.secondaryImportButtonText}>
+                  {syncingId === item.id ? "Syncing…" : "Sync Quick Add"}
+                </Text>
+              </TouchableOpacity>
             </View>
-            {item.institution ? <Text style={styles.cardSubtitle}>{item.institution}</Text> : null}
-            <TouchableOpacity
-              style={styles.importButton}
-              onPress={() => handleImport(item)}
-              disabled={importingId === item.id}
-            >
-              <Text style={styles.importButtonText}>
-                {importingId === item.id ? "Importing…" : "Import Statement (CSV)"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.secondaryImportButton}
-              onPress={() => handleSyncQuickAdd(item)}
-              disabled={syncingId === item.id}
-            >
-              <Text style={styles.secondaryImportButtonText}>
-                {syncingId === item.id ? "Syncing…" : "Sync Quick Add"}
-              </Text>
-            </TouchableOpacity>
-          </View>
-        )}
-      />
+          )}
+        />
+      )}
 
       {showForm ? (
         <View style={styles.form}>
@@ -197,8 +239,12 @@ const styles = StyleSheet.create({
     elevation: 1,
   },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
+  cardHeaderRight: { flexDirection: "row", alignItems: "center", gap: 12 },
   cardTitle: { fontSize: 17, fontWeight: "600" },
   cardSubtitle: { color: "#888", marginTop: 2 },
+  deleteText: { color: "#c0392b", fontSize: 13, fontWeight: "600" },
+  loadingBox: { alignItems: "center", paddingVertical: 40, gap: 8 },
+  loadingText: { color: "#888", fontSize: 13 },
   badge: {
     fontSize: 12,
     color: "#1a6ed8",

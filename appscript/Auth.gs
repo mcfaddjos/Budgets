@@ -110,12 +110,16 @@ function handleRegister_(payload) {
   return { token, user: { id, username } };
 }
 
+function handleMe_(user) {
+  return { id: user.id, username: user.username };
+}
+
 function handleLogin_(payload) {
   const { username, password } = payload || {};
   if (!username || !password) throw new Error("username and password are required");
 
   const user = readAll_("Users").find((u) => u.username === username);
-  if (!user) throw new Error("invalid username or password");
+  if (!user) throw new Error(`No account found for username "${username}"`);
 
   if (user.lockedUntil && new Date(user.lockedUntil).getTime() > Date.now()) {
     throw new Error("Account temporarily locked after repeated failed logins. Try again later.");
@@ -129,7 +133,7 @@ function handleLogin_(payload) {
       patch.failedAttempts = 0;
     }
     updateRow_("Users", user._rowNumber, patch);
-    throw new Error("invalid username or password");
+    throw new Error("Incorrect password");
   }
 
   updateRow_("Users", user._rowNumber, { failedAttempts: 0, lockedUntil: "" });

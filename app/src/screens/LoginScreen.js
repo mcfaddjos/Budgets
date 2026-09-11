@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,6 +10,8 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { onStatus } from "../api/client";
+import DebugLogsModal from "../components/DebugLogsModal";
 
 export default function LoginScreen() {
   const { serverUrl, updateServerUrl, login, register } = useAuth();
@@ -17,9 +19,14 @@ export default function LoginScreen() {
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [inviteCode, setInviteCode] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [mode, setMode] = useState("login"); // 'login' | 'register'
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState(null);
+  const [logsVisible, setLogsVisible] = useState(false);
+
+  useEffect(() => onStatus(setStatus), []);
 
   async function handleSubmit() {
     setError(null);
@@ -46,7 +53,8 @@ export default function LoginScreen() {
   return (
     <KeyboardAvoidingView
       style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
     >
       <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
         <Text style={styles.title}>Budgets</Text>
@@ -68,19 +76,26 @@ export default function LoginScreen() {
           style={styles.input}
           value={username}
           onChangeText={setUsername}
-          placeholder="joe"
+          placeholder="username"
           autoCapitalize="none"
           autoCorrect={false}
         />
 
         <Text style={styles.label}>Password</Text>
-        <TextInput
-          style={styles.input}
-          value={password}
-          onChangeText={setPassword}
-          placeholder="••••••••"
-          secureTextEntry
-        />
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            value={password}
+            onChangeText={setPassword}
+            placeholder="••••••••"
+            secureTextEntry={!showPassword}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity style={styles.showButton} onPress={() => setShowPassword((v) => !v)}>
+            <Text style={styles.showButtonText}>{showPassword ? "Hide" : "Show"}</Text>
+          </TouchableOpacity>
+        </View>
 
         {mode === "register" ? (
           <>
@@ -96,6 +111,7 @@ export default function LoginScreen() {
           </>
         ) : null}
 
+        {status ? <Text style={styles.status}>{status}</Text> : null}
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={busy}>
@@ -112,7 +128,13 @@ export default function LoginScreen() {
             {mode === "login" ? "New here? Create an account" : "Already have an account? Log in"}
           </Text>
         </TouchableOpacity>
+
+        <TouchableOpacity style={styles.linkButton} onPress={() => setLogsVisible(true)}>
+          <Text style={styles.diagnosticsText}>View recent errors</Text>
+        </TouchableOpacity>
       </ScrollView>
+
+      <DebugLogsModal visible={logsVisible} onClose={() => setLogsVisible(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -131,6 +153,11 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
   },
+  passwordRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  passwordInput: { flex: 1 },
+  showButton: { paddingHorizontal: 10, paddingVertical: 10 },
+  showButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
+  status: { color: "#888", marginTop: 12, textAlign: "center", fontSize: 13 },
   error: { color: "#c0392b", marginTop: 12, textAlign: "center" },
   button: {
     backgroundColor: "#1a1a1a",
@@ -142,4 +169,5 @@ const styles = StyleSheet.create({
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
   linkButton: { marginTop: 16, alignItems: "center" },
   linkText: { color: "#1a6ed8", fontSize: 14 },
+  diagnosticsText: { color: "#999", fontSize: 12 },
 });

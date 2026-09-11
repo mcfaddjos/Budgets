@@ -18,6 +18,7 @@ const HEADERS = {
   Budgets: ["id", "userId", "categoryId", "month", "amount"],
   "QuickAdd Purchases": ["Date", "Description", "Amount", "Account"],
   "QuickAdd Budgets": ["Month", "Category", "Amount"],
+  ClientLogs: ["timestamp", "platform", "message", "context"],
 };
 
 function getSheet_(name) {
@@ -81,4 +82,54 @@ function stripRow_(obj) {
   const copy = Object.assign({}, obj);
   delete copy._rowNumber;
   return copy;
+}
+
+/**
+ * Script-wide cache (shared across all executions/users, per Apps Script's
+ * CacheService model) for full-tab reads that are expensive (a real network
+ * round-trip to Sheets per call) but rarely change — Categories, Accounts,
+ * CategoryRules are read on nearly every request yet only change through a
+ * handful of actions we control, so those actions explicitly invalidate the
+ * relevant key instead of relying on the TTL alone. Rows are cached whole
+ * (with _rowNumber) since some callers need it for update/delete — callers
+ * apply stripRow_ themselves before returning data to the client.
+ */
+const CACHE_TTL_SECONDS = 300;
+
+function getCachedRows_(cacheKey, loader) {
+  const cache = CacheService.getScriptCache();
+  const hit = cache.get(cacheKey);
+  if (hit) return JSON.parse(hit);
+  const rows = loader();
+  cache.put(cacheKey, JSON.stringify(rows), CACHE_TTL_SECONDS);
+  return rows;
+}
+
+function invalidateCachedRows_(cacheKey) {
+  CacheService.getScriptCache().remove(cacheKey);
+}
+
+function getUserCategories_(userId) {
+  return getCachedRows_(`categories:${userId}`, () =>
+    readAll_("Categories").filter((c) => c.userId === userId)
+  );
+}
+function invalidateUserCategories_(userId) {
+  invalidateCachedRows_(`categories:${userId}`);
+}
+
+function getUserAccounts_(userId) {
+  return getCachedRows_(`accounts:${userId}`, () => readAll_("Accounts").filter((a) => a.userId === userId));
+}
+function invalidateUserAccounts_(userId) {
+  invalidateCachedRows_(`accounts:${userId}`);
+}
+
+function getUserCategoryRules_(userId) {
+  return getCachedRows_(`categoryRules:${userId}`, () =>
+    readAll_("CategoryRules").filter((r) => r.userId === userId)
+  );
+}
+function invalidateUserCategoryRules_(userId) {
+  invalidateCachedRows_(`categoryRules:${userId}`);
 }

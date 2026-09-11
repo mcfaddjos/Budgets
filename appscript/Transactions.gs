@@ -11,7 +11,7 @@ function importTransactionRows_(userId, accountId, transactions) {
       .filter((t) => t.userId === userId && t.accountId === accountId)
       .map((t) => t.dedupKey)
   );
-  const uncategorizedId = getUncategorizedId_(userId);
+  const categorizer = buildCategorizer_(userId);
 
   let imported = 0;
   let duplicates = 0;
@@ -23,8 +23,8 @@ function importTransactionRows_(userId, accountId, transactions) {
       continue;
     }
 
-    const categoryId = categorize_(userId, tx.normalizedDescription) || uncategorizedId;
-    if (categoryId === uncategorizedId) uncategorized++;
+    const categoryId = categorizer.categorize(tx.normalizedDescription) || categorizer.uncategorizedId;
+    if (categoryId === categorizer.uncategorizedId) uncategorized++;
 
     appendRow_("Transactions", {
       id: newId_(),
@@ -46,6 +46,19 @@ function importTransactionRows_(userId, accountId, transactions) {
   return { imported, duplicates, uncategorized, totalRows: transactions.length };
 }
 
+/**
+ * Combines accounts.list + categories.list into one round trip — both are
+ * needed together to open the "Add Transaction" form, and each Apps Script
+ * Web App call costs a real network round trip (plus the redirect-delivery
+ * hop), so halving the call count halves that fixed cost.
+ */
+function handleTransactionsFormOptions_(user) {
+  return {
+    accounts: getUserAccounts_(user.id).map(stripRow_),
+    categories: getUserCategories_(user.id).map(stripRow_),
+  };
+}
+
 function handleTransactionsList_(user, payload) {
   const { accountId, month } = payload || {};
   let rows = readAll_("Transactions").filter((t) => t.userId === user.id);
@@ -58,6 +71,53 @@ function handleTransactionsList_(user, payload) {
   });
 
   return rows.map(stripRow_);
+}
+
+/**
+ * A manually-entered transaction is a deliberate, one-off record — unlike a
+ * CSV/QuickAdd import, it's never treated as a possible duplicate of an
+ * existing row (two genuinely separate $5 coffees on the same day are both
+ * real), so this bypasses importTransactionRows_'s dedup check entirely and
+ * gives the row a dedupKey that can never collide with anything else.
+ */
+function handleTransactionsCreate_(user, payload) {
+  const { accountId, amount, categoryId, description } = payload || {};
+  const account = getUserAccounts_(user.id).find((a) => a.id === accountId);
+  if (!account) throw new Error("account not found");
+
+  const amountNum = Number(amount);
+  if (amount == null || Number.isNaN(amountNum)) throw new Error("amount is required");
+  if (!categoryId) throw new Error("category is required");
+
+  const category = getUserCategories_(user.id).find((c) => c.id === categoryId);
+  if (!category) throw new Error("category not found");
+
+  const finalDescription = (String(description || "").trim()) || category.name;
+  const id = newId_();
+  const transaction = {
+    id,
+    userId: user.id,
+    accountId,
+    date: new Date().toISOString().slice(0, 10),
+    description: finalDescription,
+    normalizedDescription: normalizeDescription_(finalDescription),
+    amount: amountNum,
+    categoryId,
+    reviewed: false,
+    dedupKey: `manual:${id}`,
+    createdAt: new Date().toISOString(),
+  };
+  appendRow_("Transactions", transaction);
+  return stripRow_(transaction);
+}
+
+/** Idempotent on the same "already gone means success" reasoning as handleAccountsDelete_. */
+function handleTransactionsDelete_(user, payload) {
+  const { id } = payload || {};
+  const tx = readAll_("Transactions").find((t) => t.id === id && t.userId === user.id);
+  if (!tx) return { ok: true };
+  deleteRow_("Transactions", tx._rowNumber);
+  return { ok: true };
 }
 
 function handleTransactionsUpdate_(user, payload) {
@@ -78,7 +138,7 @@ function handleTransactionsUpdate_(user, payload) {
 
 function handleTransactionsImportCsv_(user, payload) {
   const { accountId, csvText } = payload || {};
-  const account = readAll_("Accounts").find((a) => a.id === accountId && a.userId === user.id);
+  const account = getUserAccounts_(user.id).find((a) => a.id === accountId);
   if (!account) throw new Error("account not found");
   if (!csvText) throw new Error("csvText is required");
 
@@ -89,7 +149,7 @@ function handleTransactionsImportCsv_(user, payload) {
 
 function handleTransactionsImportQuickAdd_(user, payload) {
   const { accountId } = payload || {};
-  const account = readAll_("Accounts").find((a) => a.id === accountId && a.userId === user.id);
+  const account = getUserAccounts_(user.id).find((a) => a.id === accountId);
   if (!account) throw new Error("account not found");
 
   const parsed = parseQuickAddPurchases_(account.name);

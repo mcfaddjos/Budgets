@@ -9,8 +9,21 @@ export function AuthProvider({ children }) {
   const [serverUrl, setServerUrlState] = useState(getServerUrl());
 
   useEffect(() => {
-    loadPersistedSession().then(({ serverUrl: url }) => {
+    loadPersistedSession().then(async ({ serverUrl: url, token }) => {
       setServerUrlState(url);
+      if (token) {
+        try {
+          setUser(await api.me());
+        } catch (err) {
+          // Only a genuine server rejection (expired/invalid token) means the
+          // stored token is actually bad. A network blip or the Apps Script
+          // redirect flakiness says nothing about the token's validity — in
+          // that case, leave it in storage so the next launch (or a manual
+          // retry) can still pick the session back up instead of forcing a
+          // fresh login over what might be a perfectly good token.
+          if (err.isApiError) await setToken(null);
+        }
+      }
       setReady(true);
     });
   }, []);

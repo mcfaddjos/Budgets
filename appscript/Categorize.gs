@@ -18,30 +18,36 @@ const DEFAULT_RULES = [
   { category: "Income", keywords: ["PAYROLL", "DIRECT DEPOSIT", "DEPOSIT"] },
 ];
 
-function getCategoryIdByName_(userId, name) {
-  const row = readAll_("Categories").find((c) => c.userId === userId && c.name === name);
-  return row ? row.id : null;
-}
+/**
+ * Loads Categories + CategoryRules once and returns a categorizer closure —
+ * used by importTransactionRows_, which categorizes many rows per call.
+ * The old per-row version (a fresh readAll_ per transaction) was the main
+ * cause of multi-second/minute imports: every additional row meant two more
+ * full round-trips to the spreadsheet, on top of everything else in the loop.
+ */
+function buildCategorizer_(userId) {
+  const categoryIdByName = {};
+  getUserCategories_(userId).forEach((c) => {
+    categoryIdByName[c.name] = c.id;
+  });
 
-function getUncategorizedId_(userId) {
-  return getCategoryIdByName_(userId, "Uncategorized");
-}
+  const userRules = getUserCategoryRules_(userId);
 
-/** Returns a categoryId for a normalized description, or null if no rule matches. */
-function categorize_(userId, normalizedDescription) {
-  const userRules = readAll_("CategoryRules").filter((r) => r.userId === userId);
-  for (const rule of userRules) {
-    if (normalizedDescription.indexOf(rule.pattern) !== -1) return rule.categoryId;
-  }
-
-  for (const rule of DEFAULT_RULES) {
-    if (rule.keywords.some((kw) => normalizedDescription.indexOf(kw) !== -1)) {
-      const categoryId = getCategoryIdByName_(userId, rule.category);
-      if (categoryId) return categoryId;
-    }
-  }
-
-  return null;
+  return {
+    uncategorizedId: categoryIdByName["Uncategorized"] || null,
+    categorize(normalizedDescription) {
+      for (const rule of userRules) {
+        if (normalizedDescription.indexOf(rule.pattern) !== -1) return rule.categoryId;
+      }
+      for (const rule of DEFAULT_RULES) {
+        if (rule.keywords.some((kw) => normalizedDescription.indexOf(kw) !== -1)) {
+          const categoryId = categoryIdByName[rule.category];
+          if (categoryId) return categoryId;
+        }
+      }
+      return null;
+    },
+  };
 }
 
 /**
@@ -53,10 +59,11 @@ function saveRule_(userId, normalizedDescription, categoryId) {
   const pattern = normalizedDescription.split(" ").slice(0, 3).join(" ");
   if (!pattern) return;
 
-  const existing = readAll_("CategoryRules").find((r) => r.userId === userId && r.pattern === pattern);
+  const existing = getUserCategoryRules_(userId).find((r) => r.pattern === pattern);
   if (existing) {
     updateRow_("CategoryRules", existing._rowNumber, { categoryId });
   } else {
     appendRow_("CategoryRules", { id: newId_(), userId, pattern, categoryId });
   }
+  invalidateUserCategoryRules_(userId);
 }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
   FlatList,
   Modal,
@@ -11,6 +12,7 @@ import {
   View,
 } from "react-native";
 import { api } from "../api/client";
+import AddTransactionModal from "../components/AddTransactionModal";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -24,21 +26,22 @@ function formatAmount(amount) {
 export default function TransactionsScreen() {
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [pickerTx, setPickerTx] = useState(null);
+  const [addTxVisible, setAddTxVisible] = useState(false);
 
   const month = currentMonth();
 
   const load = useCallback(async () => {
     try {
-      const [txs, cats] = await Promise.all([
-        api.getTransactions({ month }),
-        api.getCategories(),
-      ]);
+      const [txs, cats] = await Promise.all([api.getTransactions({ month }), api.getCategories()]);
       setTransactions(txs);
       setCategories(cats);
     } catch (err) {
       Alert.alert("Couldn't load transactions", err.message);
+    } finally {
+      setLoading(false);
     }
   }, [month]);
 
@@ -80,37 +83,71 @@ export default function TransactionsScreen() {
     }
   }
 
+  function handleDelete(tx) {
+    Alert.alert("Delete transaction?", `${tx.description} — ${formatAmount(tx.amount)}`, [
+      { text: "Cancel", style: "cancel" },
+      {
+        text: "Delete",
+        style: "destructive",
+        onPress: async () => {
+          try {
+            await api.deleteTransaction(tx.id);
+            setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
+          } catch (err) {
+            Alert.alert("Couldn't delete transaction", err.message);
+          }
+        },
+      },
+    ]);
+  }
+
   return (
     <View style={styles.container}>
-      <Text style={styles.header}>{month}</Text>
-      <FlatList
-        data={transactions}
-        keyExtractor={(item) => String(item.id)}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
-        contentContainerStyle={styles.list}
-        ListEmptyComponent={
-          <Text style={styles.empty}>No transactions this month yet. Import a statement.</Text>
-        }
-        renderItem={({ item }) => (
-          <View style={styles.row}>
-            <View style={styles.rowMain}>
-              <Text style={styles.description} numberOfLines={1}>
-                {item.description}
-              </Text>
-              <Text style={styles.date}>{item.date}</Text>
-            </View>
-            <View style={styles.rowSide}>
-              <Text style={[styles.amount, item.amount < 0 && styles.amountCredit]}>
-                {formatAmount(item.amount)}
-              </Text>
-              <TouchableOpacity onPress={() => setPickerTx(item)}>
-                <Text style={styles.category}>{categoryName(item.category_id)}</Text>
-              </TouchableOpacity>
-            </View>
-            <Switch value={!!item.reviewed} onValueChange={() => handleToggleReviewed(item)} />
-          </View>
-        )}
-      />
+      <View style={styles.headerRow}>
+        <Text style={styles.header}>{month}</Text>
+        <TouchableOpacity style={styles.addButton} onPress={() => setAddTxVisible(true)}>
+          <Text style={styles.addButtonText}>+ Add Transaction</Text>
+        </TouchableOpacity>
+      </View>
+
+      {loading ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator />
+          <Text style={styles.loadingText}>Loading transactions…</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={transactions}
+          keyExtractor={(item) => String(item.id)}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          contentContainerStyle={styles.list}
+          ListEmptyComponent={
+            <Text style={styles.empty}>No transactions this month yet. Import a statement.</Text>
+          }
+          ListHeaderComponent={
+            transactions.length > 0 ? <Text style={styles.hint}>Long-press a transaction to delete it.</Text> : null
+          }
+          renderItem={({ item }) => (
+            <TouchableOpacity style={styles.row} onLongPress={() => handleDelete(item)}>
+              <View style={styles.rowMain}>
+                <Text style={styles.description} numberOfLines={1}>
+                  {item.description}
+                </Text>
+                <Text style={styles.date}>{item.date}</Text>
+              </View>
+              <View style={styles.rowSide}>
+                <Text style={[styles.amount, item.amount < 0 && styles.amountCredit]}>
+                  {formatAmount(item.amount)}
+                </Text>
+                <TouchableOpacity onPress={() => setPickerTx(item)}>
+                  <Text style={styles.category}>{categoryName(item.categoryId)}</Text>
+                </TouchableOpacity>
+              </View>
+              <Switch value={!!item.reviewed} onValueChange={() => handleToggleReviewed(item)} />
+            </TouchableOpacity>
+          )}
+        />
+      )}
 
       <Modal visible={!!pickerTx} transparent animationType="slide" onRequestClose={() => setPickerTx(null)}>
         <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setPickerTx(null)}>
@@ -124,15 +161,42 @@ export default function TransactionsScreen() {
           </View>
         </TouchableOpacity>
       </Modal>
+
+      <AddTransactionModal
+        visible={addTxVisible}
+        onClose={() => setAddTxVisible(false)}
+        onSaved={() => {
+          setAddTxVisible(false);
+          load();
+        }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f7f8" },
-  header: { fontSize: 14, fontWeight: "600", color: "#888", padding: 16, paddingBottom: 4 },
+  headerRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 4,
+  },
+  header: { fontSize: 14, fontWeight: "600", color: "#888" },
+  addButton: {
+    backgroundColor: "#1a6ed8",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  addButtonText: { color: "#fff", fontWeight: "600", fontSize: 13 },
+  loadingBox: { alignItems: "center", paddingVertical: 40, gap: 8 },
+  loadingText: { color: "#888", fontSize: 13 },
   list: { paddingHorizontal: 16, paddingBottom: 16 },
   empty: { textAlign: "center", color: "#888", marginTop: 40 },
+  hint: { textAlign: "center", color: "#aaa", fontSize: 11, marginBottom: 8 },
   row: {
     flexDirection: "row",
     alignItems: "center",
