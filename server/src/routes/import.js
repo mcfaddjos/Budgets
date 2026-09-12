@@ -2,10 +2,14 @@ const express = require("express");
 const multer = require("multer");
 const db = require("../db");
 const { parseStatementCsv } = require("../csv");
-const { categorize, getUncategorizedId } = require("../categorize");
+const { parsePurchaseRows } = require("../sheetImport");
+const { getSheetRows } = require("../googleSheets");
+const { importTransactionRows } = require("../importTransactions");
 
 const router = express.Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+const PURCHASES_TAB = process.env.GOOGLE_SHEET_PURCHASES_TAB || "Purchases";
 
 function getOwnedAccount(accountId, userId) {
   return db
@@ -25,43 +29,33 @@ router.post("/:accountId/import", upload.single("file"), (req, res) => {
     return res.status(400).json({ error: err.message });
   }
 
-  const insert = db.prepare(
-    `INSERT OR IGNORE INTO transactions
-       (user_id, account_id, date, description, normalized_description, amount, category_id, dedup_key)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
-  );
+  const result = importTransactionRows(req.user.id, account.id, parsed.transactions);
+  res.json({ ...result, parseErrors: parsed.errors });
+});
 
-  let imported = 0;
-  let duplicates = 0;
-  let uncategorized = 0;
-  const uncategorizedId = getUncategorizedId(req.user.id);
+// Pulls rows from the "Purchases" tab of the configured Google Sheet
+// (see server/src/googleSheets.js) that match this account's name, and
+// imports them the same way a CSV upload would.
+router.post("/:accountId/import-sheet", async (req, res) => {
+  const account = getOwnedAccount(req.params.accountId, req.user.id);
+  if (!account) return res.status(404).json({ error: "account not found" });
 
-  for (const tx of parsed.transactions) {
-    const categoryId = categorize(req.user.id, tx.normalizedDescription) || uncategorizedId;
-    if (categoryId === uncategorizedId) uncategorized++;
-
-    const result = insert.run(
-      req.user.id,
-      account.id,
-      tx.date,
-      tx.description,
-      tx.normalizedDescription,
-      tx.amount,
-      categoryId,
-      tx.dedupKey
-    );
-
-    if (result.changes > 0) imported++;
-    else duplicates++;
+  let rows;
+  try {
+    rows = await getSheetRows(PURCHASES_TAB);
+  } catch (err) {
+    return res.status(502).json({ error: `Could not read Google Sheet: ${err.message}` });
   }
 
-  res.json({
-    imported,
-    duplicates,
-    uncategorized,
-    parseErrors: parsed.errors,
-    totalRows: parsed.transactions.length,
-  });
+  let parsed;
+  try {
+    parsed = parsePurchaseRows(rows, account.name);
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  }
+
+  const result = importTransactionRows(req.user.id, account.id, parsed.transactions);
+  res.json({ ...result, parseErrors: parsed.errors });
 });
 
 module.exports = router;

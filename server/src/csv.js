@@ -114,20 +114,21 @@ function normalizeDescription(raw) {
 }
 
 /**
- * Parses a raw CSV string into normalized transaction rows.
+ * Parses already-tabular rows (header + data, as string arrays) into
+ * normalized transaction rows. Shared by CSV upload and Google Sheets import,
+ * since both hand this function the same "grid of strings" shape.
  * Amount convention: positive = money spent (charge), negative = credit/refund/payment.
  * This matches how most credit card issuers export CSVs, and is the convention
  * the rest of the app (budgets, spend totals) assumes.
  */
-function parseStatementCsv(text) {
-  const rows = parseCsv(text);
-  if (rows.length === 0) throw new Error("CSV file is empty");
+function parseStatementRows(rows) {
+  if (rows.length === 0) throw new Error("No rows to parse");
 
   const header = rows[0];
   const columns = mapColumns(header);
   if (!columns) {
     throw new Error(
-      "Could not find date/description/amount columns in the CSV header"
+      "Could not find date/description/amount columns in the header"
     );
   }
 
@@ -171,11 +172,19 @@ function parseStatementCsv(text) {
   return { transactions, errors };
 }
 
+/** Parses a raw CSV string (from a file upload) into normalized transaction rows. */
+function parseStatementCsv(text) {
+  const rows = parseCsv(text);
+  if (rows.length === 0) throw new Error("CSV file is empty");
+  return parseStatementRows(rows);
+}
+
 module.exports = {
   parseCsv,
   mapColumns,
   parseAmount,
   normalizeDate,
   normalizeDescription,
+  parseStatementRows,
   parseStatementCsv,
 };
