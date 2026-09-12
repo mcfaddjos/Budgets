@@ -1,0 +1,167 @@
+// Data model per PRD.md §9 (and §5b for the household/invite design).
+// IDs are UUIDs (cuid would also work; UUID chosen to match the appscript
+// backend's Utilities.getUuid()-based ids, so a future data migration from
+// the live Sheets DB doesn't need to remap every id).
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum HouseholdRole {
+  OWNER
+  MEMBER
+}
+
+model Household {
+  id        String   @id @default(uuid())
+  name      String?
+  createdAt DateTime @default(now())
+
+  members       HouseholdMember[]
+  invites       Invite[]
+  accounts      Account[]
+  categories    Category[]
+  categoryRules CategoryRule[]
+  transactions  Transaction[]
+  budgets       Budget[]
+}
+
+model User {
+  id             String    @id @default(uuid())
+  username       String    @unique
+  passwordHash   String
+  failedAttempts Int       @default(0)
+  lockedUntil    DateTime?
+  createdAt      DateTime  @default(now())
+
+  memberships         HouseholdMember[]
+  sessions            Session[]
+  invitesCreated      Invite[]      @relation("InviteCreator")
+  invitesUsed         Invite[]      @relation("InviteRedeemer")
+  transactionsCreated Transaction[] @relation("TransactionCreator")
+}
+
+// Membership is a relationship, not a column on User — see PRD §5b. A user
+// belonging to more than one household later needs no schema change here,
+// just a "which household am I acting in" concept client-side.
+model HouseholdMember {
+  householdId String
+  userId      String
+  role        HouseholdRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([householdId, userId])
+}
+
+// Household-scoped, replacing the appscript backend's single global
+// INVITE_CODE script property — each household mints its own invites.
+model Invite {
+  id              String    @id @default(uuid())
+  householdId     String
+  code            String    @unique
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime?
+  usedByUserId    String?
+  usedAt          DateTime?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("InviteCreator", fields: [createdByUserId], references: [id])
+  usedBy    User?     @relation("InviteRedeemer", fields: [usedByUserId], references: [id])
+}
+
+// Real session expiry — the appscript backend's sessions never expired,
+// flagged as a gap in PRD §10.
+model Session {
+  token     String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id          String  @id @default(uuid())
+  householdId String
+  name        String
+  type        String
+  institution String?
+
+  createdAt    DateTime      @default(now())
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+model Category {
+  id          String @id @default(uuid())
+  householdId String
+  name        String
+
+  household    Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  rules        CategoryRule[]
+  transactions Transaction[]
+  budgets      Budget[]
+
+  @@unique([householdId, name])
+}
+
+model CategoryRule {
+  id          String @id @default(uuid())
+  householdId String
+  pattern     String
+  categoryId  String
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, pattern])
+}
+
+model Transaction {
+  id     String @id @default(uuid())
+  householdId String
+  accountId   String
+
+  // Kept as YYYY-MM-DD strings (not a Date column) to match the existing
+  // month-prefix filtering logic ported from the appscript backend as-is —
+  // revisit if/when that filtering gets rewritten as a real date-range query.
+  date                  String
+  description           String
+  normalizedDescription String
+  amount                Float
+  categoryId            String?
+  reviewed              Boolean  @default(false)
+  dedupKey              String
+  createdByUserId       String?
+  createdAt             DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("TransactionCreator", fields: [createdByUserId], references: [id])
+
+  @@unique([accountId, dedupKey])
+  @@index([householdId, date])
+}
+
+model Budget {
+  id          String @id @default(uuid())
+  householdId String
+  categoryId  String
+  month       String // YYYY-MM
+  amount      Float
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, categoryId, month])
+}
