@@ -10,6 +10,7 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import MaskedPasswordInput from "../components/MaskedPasswordInput";
 
 // __DEV__ is a React Native global — always false in a release/production
 // build, so this relaxed length + prefilled value can never ship. Purely
@@ -24,12 +25,11 @@ export default function LoginScreen() {
   const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [confirmPassphrase, setConfirmPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [inviteCode, setInviteCode] = useState("");
-  // Defaults to visible in dev — secureTextEntry's masking isn't rendering
-  // dots reliably on this device/RN combo, and showing plaintext by
-  // default is a reasonable dev-only tradeoff to actually see what's
-  // typed while that gets tracked down properly (__DEV__ is always false
-  // in a release build, so production still defaults to masked).
-  const [showPassphrase, setShowPassphrase] = useState(__DEV__);
+  // Now backed by MaskedPasswordInput's own overlay masking (not
+  // secureTextEntry, which doesn't render on this device/RN combo — see
+  // MaskedPasswordInput.js), so this can go back to the normal
+  // secure-by-default behavior.
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -126,15 +126,15 @@ export default function LoginScreen() {
           {mode === "create" ? " You'll also get a one-time recovery code after this — save it somewhere safe." : ""}
         </Text>
         <View style={styles.passwordRow}>
-          <TextInput
+          <MaskedPasswordInput
             style={[styles.input, styles.passwordInput]}
             value={vaultPassphrase}
             onChangeText={(text) => {
               setVaultPassphrase(text);
               setError(null);
             }}
-            placeholder="••••••••••"
-            secureTextEntry={!showPassphrase}
+            hidden={!showPassphrase}
+            placeholder="Vault passphrase"
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
@@ -149,15 +149,15 @@ export default function LoginScreen() {
         {mode === "create" ? (
           <>
             <Text style={styles.label}>Confirm Passphrase</Text>
-            <TextInput
+            <MaskedPasswordInput
               style={styles.input}
               value={confirmPassphrase}
               onChangeText={(text) => {
                 setConfirmPassphrase(text);
                 setError(null);
               }}
-              placeholder="••••••••••"
-              secureTextEntry={!showPassphrase}
+              hidden={!showPassphrase}
+              placeholder="Confirm passphrase"
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="off"

@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import MaskedPasswordInput from "../components/MaskedPasswordInput";
 
 /**
  * Shown when there's a valid backend session but the vault isn't unlocked
@@ -13,8 +14,9 @@ const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
 export default function UnlockScreen() {
   const { user, unlockVault, logout } = useAuth();
   const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
-  // See LoginScreen.js's note on why this defaults to visible in dev.
-  const [showPassphrase, setShowPassphrase] = useState(__DEV__);
+  // Now backed by MaskedPasswordInput's own overlay masking — see
+  // LoginScreen.js's note on why secureTextEntry itself isn't used.
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -37,15 +39,15 @@ export default function UnlockScreen() {
         <Text style={styles.subtitle}>Enter your vault passphrase to unlock your household's data.</Text>
 
         <View style={styles.passwordRow}>
-          <TextInput
+          <MaskedPasswordInput
             style={[styles.input, styles.passwordInput]}
             value={vaultPassphrase}
             onChangeText={(text) => {
               setVaultPassphrase(text);
               setError(null);
             }}
+            hidden={!showPassphrase}
             placeholder="Vault passphrase"
-            secureTextEntry={!showPassphrase}
             autoCapitalize="none"
             autoCorrect={false}
             autoComplete="off"
