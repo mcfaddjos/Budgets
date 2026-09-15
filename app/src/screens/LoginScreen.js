@@ -1,5 +1,6 @@
 import { useState } from "react";
 import {
+  Alert,
   KeyboardAvoidingView,
   Platform,
   ScrollView,
@@ -11,6 +12,20 @@ import {
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 import MaskedPasswordInput from "../components/MaskedPasswordInput";
+
+/** Resolves true (use defaults) / false (start empty) — never rejects, "Add My Own" is a legitimate choice, not a cancellation. */
+function askUseDefaultCategories() {
+  return new Promise((resolve) => {
+    Alert.alert(
+      "Categories",
+      "Start with a default category set, or add your own from scratch?",
+      [
+        { text: "Add My Own", style: "cancel", onPress: () => resolve(false) },
+        { text: "Use Defaults", onPress: () => resolve(true) },
+      ]
+    );
+  });
+}
 
 // __DEV__ is a React Native global — always false in a release/production
 // build, so this relaxed length + prefilled value can never ship. Purely
@@ -53,8 +68,10 @@ export default function LoginScreen() {
     try {
       let result;
       if (mode === "login") result = await login(vaultPassphrase);
-      else if (mode === "create") result = await registerNewHousehold(vaultPassphrase);
-      else result = await joinHousehold(inviteCode.trim(), vaultPassphrase);
+      else if (mode === "create") {
+        const useDefaults = await askUseDefaultCategories();
+        result = await registerNewHousehold(vaultPassphrase, useDefaults);
+      } else result = await joinHousehold(inviteCode.trim(), vaultPassphrase);
 
       if (result === false) {
         // Google sign-in sheet was cancelled — not an error, just stop.

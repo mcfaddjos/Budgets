@@ -90,8 +90,13 @@ export function AuthProvider({ children }) {
     setUnlocked(true);
   }
 
-  /** New person, first Google sign-in ever, starting their own household. */
-  async function registerNewHousehold(vaultPassphrase) {
+  /**
+   * New person, first Google sign-in ever, starting their own household.
+   * seedDefaults lets the caller offer a choice ("start with common
+   * categories, or add your own from scratch?") instead of always
+   * seeding the built-in default list.
+   */
+  async function registerNewHousehold(vaultPassphrase, seedDefaults = true) {
     const idToken = await signInWithGoogle();
     if (!idToken) return false; // user cancelled the Google sign-in sheet
 
@@ -121,10 +126,12 @@ export function AuthProvider({ children }) {
     // otherwise fail completely silently. Log explicitly and don't let a
     // seeding failure undo an already-successful registration; the user
     // can still add categories manually from the Budgets screen.
-    try {
-      await seedDefaultCategories(dek);
-    } catch (err) {
-      console.error("[registerNewHousehold] seedDefaultCategories failed:", err.message);
+    if (seedDefaults) {
+      try {
+        await seedDefaultCategories(dek);
+      } catch (err) {
+        console.error("[registerNewHousehold] seedDefaultCategories failed:", err.message);
+      }
     }
     setPendingRecoveryCode({ householdId: result.householdId, code: keys.recoveryKeyToDisplayString(recoveryKey) });
 
