@@ -1,6 +1,5 @@
 const db = require("../db");
 const { verifyGoogleIdToken, createSession, newToken } = require("../auth");
-const { seedDefaultCategories } = require("../categorize");
 
 function publicUser(user) {
   return { id: user.id, email: user.email, name: user.name };
@@ -65,7 +64,10 @@ async function registerNewHousehold({
     return { user, householdId: household.id };
   });
 
-  await seedDefaultCategories(result.householdId);
+  // Default categories are no longer seeded here — the server never holds
+  // the household DEK needed to encrypt them (§10a). The client seeds
+  // them right after this call succeeds, via categories.createMany, using
+  // its own copy of the default list (app/src/categorize/defaults.js).
 
   const token = await createSession(result.user.id);
   return { token, user: publicUser(result.user), householdId: result.householdId };

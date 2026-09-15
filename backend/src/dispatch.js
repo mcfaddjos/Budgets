@@ -2,6 +2,7 @@ const { requireAuth } = require("./auth");
 const authHandlers = require("./handlers/auth");
 const accountsHandlers = require("./handlers/accounts");
 const categoriesHandlers = require("./handlers/categories");
+const categoryRulesHandlers = require("./handlers/categoryRules");
 const transactionsHandlers = require("./handlers/transactions");
 const budgetsHandlers = require("./handlers/budgets");
 
@@ -28,7 +29,11 @@ const ROUTES = {
 
   "categories.list": (user) => categoriesHandlers.list(user),
   "categories.create": (user, payload) => categoriesHandlers.create(user, payload),
+  "categories.createMany": (user, payload) => categoriesHandlers.createMany(user, payload),
   "categories.update": (user, payload) => categoriesHandlers.update(user, payload),
+
+  "categoryRules.list": (user) => categoryRulesHandlers.list(user),
+  "categoryRules.create": (user, payload) => categoryRulesHandlers.create(user, payload),
 
   "transactions.list": (user, payload) => transactionsHandlers.list(user, payload),
   "transactions.create": (user, payload) => transactionsHandlers.create(user, payload),

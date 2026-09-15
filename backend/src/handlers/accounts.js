@@ -1,20 +1,21 @@
 const db = require("../db");
 const { getActiveHouseholdId } = require("../household");
 
-const ACCOUNT_TYPES = ["checking", "savings"];
-
 async function list(user) {
   const householdId = await getActiveHouseholdId(user);
   return db.account.findMany({ where: { householdId }, orderBy: { createdAt: "asc" } });
 }
 
+/**
+ * name/type/institution live inside encryptedData (§10a) — the server
+ * can no longer validate account type or read anything about the
+ * content, only that ciphertext was actually provided.
+ */
 async function create(user, payload) {
-  const { name, type, institution } = payload || {};
-  if (!name || !ACCOUNT_TYPES.includes(type)) {
-    throw new Error("name and type (checking|savings) are required");
-  }
+  const { encryptedData, nonce } = payload || {};
+  if (!encryptedData || !nonce) throw new Error("encryptedData and nonce are required");
   const householdId = await getActiveHouseholdId(user);
-  return db.account.create({ data: { householdId, name, type, institution: institution || null } });
+  return db.account.create({ data: { householdId, encryptedData, nonce } });
 }
 
 /** Idempotent — see appscript/Accounts.gs's handleAccountsDelete_ for why: a retried delete of an already-gone row is success, not an error. */
