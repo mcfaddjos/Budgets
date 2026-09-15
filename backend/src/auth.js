@@ -1,18 +1,30 @@
 const crypto = require("node:crypto");
-const bcrypt = require("bcryptjs");
+const { OAuth2Client } = require("google-auth-library");
 const db = require("./db");
 
-const BCRYPT_ROUNDS = 12;
 const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days — appscript backend's sessions never expired at all (PRD §10 gap)
-const MAX_FAILED_ATTEMPTS = 5;
-const LOCKOUT_MS = 15 * 60 * 1000;
 
-async function hashPassword(password) {
-  return bcrypt.hash(password, BCRYPT_ROUNDS);
-}
+const googleClient = new OAuth2Client();
 
-async function verifyPassword(password, hash) {
-  return bcrypt.compare(password, hash);
+/**
+ * The entire login-auth check (§10a): verifies the ID token's signature,
+ * audience, and expiry against Google's own public keys. There is no
+ * local password to check at all — a vault passphrase exists (see
+ * app/src/crypto/keys.js) but it's for the encryption key chain, never
+ * sent to or checked by the server.
+ */
+async function verifyGoogleIdToken(idToken) {
+  if (!idToken) throw new Error("Missing Google ID token");
+  if (!process.env.GOOGLE_CLIENT_ID) throw new Error("GOOGLE_CLIENT_ID is not configured on the server");
+
+  const ticket = await googleClient.verifyIdToken({
+    idToken,
+    audience: process.env.GOOGLE_CLIENT_ID,
+  });
+  const payload = ticket.getPayload();
+  if (!payload || !payload.sub) throw new Error("Invalid Google ID token");
+
+  return { googleId: payload.sub, email: payload.email, name: payload.name || null };
 }
 
 function newToken() {
@@ -44,32 +56,9 @@ async function requireAuth(token) {
   return user;
 }
 
-async function recordFailedLogin(user) {
-  const attempts = user.failedAttempts + 1;
-  const data = { failedAttempts: attempts };
-  if (attempts >= MAX_FAILED_ATTEMPTS) {
-    data.lockedUntil = new Date(Date.now() + LOCKOUT_MS);
-    data.failedAttempts = 0;
-  }
-  await db.user.update({ where: { id: user.id }, data });
-}
-
-async function clearFailedLogins(userId) {
-  await db.user.update({ where: { id: userId }, data: { failedAttempts: 0, lockedUntil: null } });
-}
-
-function isLocked(user) {
-  return Boolean(user.lockedUntil && user.lockedUntil.getTime() > Date.now());
-}
-
 module.exports = {
-  MAX_FAILED_ATTEMPTS,
-  hashPassword,
-  verifyPassword,
+  verifyGoogleIdToken,
   newToken,
   createSession,
   requireAuth,
-  recordFailedLogin,
-  clearFailedLogins,
-  isLocked,
 };

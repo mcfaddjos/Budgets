@@ -10,13 +10,17 @@ const budgetsHandlers = require("./handlers/budgets");
 // kept identical so pointing the existing client at this backend later is
 // a one-line serverUrl change, not a rewrite. Worth revisiting for a more
 // idiomatic REST shape once the client itself gets updated.
-const PUBLIC_ACTIONS = new Set(["auth.register", "auth.login"]);
+const PUBLIC_ACTIONS = new Set(["auth.registerNewHousehold", "auth.joinHouseholdViaInvite", "auth.login"]);
 
 const ROUTES = {
-  "auth.register": (user, payload) => authHandlers.register(payload),
+  "auth.registerNewHousehold": (user, payload) => authHandlers.registerNewHousehold(payload),
+  "auth.joinHouseholdViaInvite": (user, payload) => authHandlers.joinHouseholdViaInvite(payload),
   "auth.login": (user, payload) => authHandlers.login(payload),
   "auth.me": (user) => authHandlers.me(user),
   "auth.createInvite": (user, payload) => authHandlers.createInvite(user, payload),
+  "auth.listPendingKeyGrants": (user, payload) => authHandlers.listPendingKeyGrants(user, payload),
+  "auth.grantAccess": (user, payload) => authHandlers.grantAccess(user, payload),
+  "auth.setRecoveryKey": (user, payload) => authHandlers.setRecoveryKey(user, payload),
 
   "accounts.list": (user) => accountsHandlers.list(user),
   "accounts.create": (user, payload) => accountsHandlers.create(user, payload),

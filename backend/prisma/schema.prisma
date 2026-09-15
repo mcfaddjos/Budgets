@@ -96,9 +96,19 @@ model User {
 // Also where each member's copy of the household DEK lives (§10a): one
 // copy sealed to their public key (day-to-day unlock via password), and a
 // second copy wrapped with their own recovery key (self-service recovery
-// if the password is lost — see PRD §10a's account-recovery decision).
-// Losing both is unrecoverable by design; the household's data isn't lost
-// since other members keep their own working copies.
+// if the vault passphrase is lost — see PRD §10a's account-recovery
+// decision). Losing both is unrecoverable by design; the household's data
+// isn't lost since other members keep their own working copies.
+//
+// wrappedDek/recoveryWrappedDek/recoveryDekNonce are nullable because they
+// can't all be populated atomically: sealing the DEK to a new member's
+// public key requires that key to already exist, so joining via invite
+// (§5b) necessarily creates this row with wrappedDek still null — an
+// existing member has to complete the grant once the new member exists,
+// then the new member sets up their own recovery code once they can
+// actually decrypt anything. A household's creator is the one exception
+// (they hold the DEK from the moment they generate it, so their own row
+// is fully populated immediately).
 model HouseholdMember {
   householdId String
   userId      String
@@ -107,13 +117,16 @@ model HouseholdMember {
 
   // Household DEK sealed to this member's publicKey (crypto_box_seal —
   // no separate nonce needed, the ephemeral key rides in the ciphertext).
-  wrappedDek String // base64
+  // Null until an existing member completes the access grant.
+  wrappedDek String? // base64
 
   // Household DEK encrypted (crypto_secretbox_easy) with a high-entropy
-  // recovery key generated client-side at join time and shown to the user
-  // once to store themselves — the server never sees the recovery key.
-  recoveryWrappedDek String // base64
-  recoveryDekNonce   String // base64
+  // recovery key generated client-side and shown to the user once to
+  // store themselves — the server never sees the recovery key. Null until
+  // the member sets this up themselves (requires wrappedDek to be set
+  // first, so they have the DEK to wrap).
+  recoveryWrappedDek String? // base64
+  recoveryDekNonce   String? // base64
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
