@@ -1,0 +1,18 @@
+diff --git a/node_modules/react-native-libsodium/android/CMakeLists.txt b/node_modules/react-native-libsodium/android/CMakeLists.txt
+index aea3c38..2e5bcb5 100644
+--- a/node_modules/react-native-libsodium/android/CMakeLists.txt
++++ b/node_modules/react-native-libsodium/android/CMakeLists.txt
+@@ -1,5 +1,13 @@
+ cmake_minimum_required(VERSION 3.4.1)
+ 
++# Windows passes NODE_MODULES_DIR with backslashes, which CMake then tries
++# to re-parse as escape sequences wherever the variable gets interpolated
++# into a quoted string below (e.g. "\Source" -> invalid escape '\S') —
++# same class of bug React Native core itself hit and fixed the same way.
++if (CMAKE_HOST_WIN32)
++  string(REPLACE "\\" "/" NODE_MODULES_DIR "${NODE_MODULES_DIR}")
++endif()
++
+ set (CMAKE_VERBOSE_MAKEFILE ON)
+ set (CMAKE_CXX_STANDARD 20)
+ 
