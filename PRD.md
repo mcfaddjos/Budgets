@@ -2,7 +2,7 @@
 
 **Status:** Active development (PoC live, in daily use)
 **Author:** Joe McFadden
-**Last updated:** 2026-09-11
+**Last updated:** 2026-09-15
 
 ## 1. Summary
 
@@ -213,17 +213,24 @@ the budget quietly.
 - **Category guess feeds the same categorizer** that already exists for
   statement imports (merchant rules + default keywords), rather than being
   a separate guessing mechanism.
-- **Store the receipt image itself, attached to the transaction** — not
-  just extracted numbers. Competitive research (§12) found this is the one
-  thing Monarch Money does that most competitors (YNAB, Copilot,
-  PocketGuard, Rocket Money) skip entirely, and it's genuinely useful
-  later (tax records, disputing a charge) in a way pure OCR output isn't.
+- **Decision (2026-09-15): the receipt/gas-pump/screenshot image is
+  consumed, not stored.** Only the extracted fields (amount, vendor,
+  date, category guess) are saved to the transaction — the image itself
+  is discarded once extraction completes, never persisted (not on the
+  server, not in the household's encrypted data). This reverses the
+  earlier plan to keep the image as a durable record (see §12's Monarch
+  Money comparison, now not something we're matching) — smaller data
+  footprint, nothing extra to encrypt/store/manage under §10a, at the
+  cost of losing the "pull up the original receipt later" use case
+  (tax records, disputing a charge).
 - Explicitly **not** attempting full itemized receipt parsing (line items,
   tax breakdown) for v1 — just enough to log one transaction at the
   receipt's total.
-- Needs a decision on where extraction actually runs (on-device vs. a
-  server-side call) once the backend migration (§14a) is further along,
-  since the answer may depend on what the new backend looks like.
+- **Extraction location, resolved by §10a**: since the server must never
+  see plaintext, and the image is transient (never persisted), it goes
+  straight from device to wherever extraction happens — fully on-device,
+  or a direct client-to-vision-API call — never proxied through our own
+  backend.
 
 ## 9. Data Model (high level, post §5a/§5b household migration)
 
@@ -251,9 +258,77 @@ of `householdId` and has no `createdByUserId` — see the actual schema in
   - No general rate limiting beyond the login-lockout counter; registration itself has no throttling beyond the invite code.
   - Auth token currently rides in the JSON body, not an `Authorization` header — fine functionally, but header is the convention worth adopting on the new backend.
   - Never transmit statement files or parsed data to third parties. No live credential-based bank login, which sidesteps storing bank passwords entirely.
+  - **The operator/developer cannot read user data even with full production database access** — a stronger bar than standard encryption-at-rest, requiring true end-to-end encryption. See §10a for the design this requires.
 - **Data ownership:** a user can export or delete all their data at any time.
 - **Accuracy:** parsing errors must be surfaced, not silently dropped — a failed row/transaction should be visibly flagged, not swallowed. Same principle applies to §8.6 receipt extraction — a low-confidence read gets flagged for the user to fix, not silently guessed.
 - **Performance:** importing a typical monthly statement (50–300 transactions) should complete in a few seconds. **Not currently true** — see §14 for why, and §14a for the fix.
+
+### 10a. End-to-end encryption & zero developer access (decision, 2026-09-15)
+
+Explicit new requirement: household financial data must be unreadable by
+the app operator/developer, not just outside attackers — even with full
+production database access. This goes beyond "encrypted at rest" (any
+managed Postgres provider gives that for free) to encryption the *server
+itself* cannot reverse.
+
+- **Household Data Encryption Key (DEK)**: one symmetric key per household,
+  generated client-side at household creation, encrypts all sensitive
+  fields (transaction amount/description, category names, budget amounts,
+  receipt images per §8.6) before they ever leave the device. The server
+  stores only ciphertext plus the minimal plaintext metadata needed to
+  route/list rows (ids, timestamps, householdId, accountId) — never
+  content.
+- **Key sharing across members**: each user generates a public/private
+  keypair on first signup (private key encrypted with a key derived from
+  their password, stored as an opaque blob server-side so it can follow
+  them to a new device on login). Inviting a member (§5b) means an
+  existing member decrypts the household DEK locally and re-encrypts
+  ("wraps") it to the new member's public key (libsodium sealed boxes) —
+  the server only ever relays the wrapped blob, never the DEK itself.
+- **No server-side computation on plaintext.** Budget totals, category
+  sums, trend reports (§8.5), and reconciliation flags (§8.4) all move to
+  being computed **client-side** after fetching and decrypting the
+  relevant rows — the backend can no longer do this work, since it never
+  holds the DEK. Acceptable at household-scale transaction volumes (tens
+  to low hundreds of rows/month); would need revisiting if usage ever grew
+  far beyond a household.
+- **Account recovery (decision, 2026-09-15)**: a **recovery code** is
+  generated at signup — a second wrapped copy of the household DEK the
+  user is responsible for storing themselves (password manager, printed,
+  etc). Losing both the password and the recovery code means that
+  member's access is unrecoverable (other members keep theirs, and the
+  household's data itself isn't lost) — a deliberate tradeoff for a
+  self-service recovery flow that doesn't depend on another member being
+  available.
+- **Open question, not yet resolved**: removing a household member (once
+  that flow exists) doesn't automatically revoke their ability to decrypt
+  data they already synced locally, and doesn't rotate the household DEK
+  — a real gap for later, not blocking for a 2-person trusted household
+  today. Tracked in §15.
+- **Library**: libsodium (`react-native-libsodium` on the Expo app,
+  `libsodium-wrappers` on the Express server for any server-side crypto
+  needs) rather than hand-rolled AES/KDF code.
+
+### 10b. Client-side caching & prefetch (decision, 2026-09-15)
+
+To keep the app feeling instant regardless of backend cold-start behavior
+(see §14a's hosting decision):
+
+- **Cache-first render**: on launch, render immediately from the
+  last-known decrypted data already sitting in local on-device storage —
+  no waiting on a network round-trip to show *something*.
+- **Background refetch**: fetch fresh encrypted data in parallel, decrypt
+  client-side, and update the UI when it lands (stale-while-revalidate),
+  rather than blocking the initial render on it.
+- **Prefetch for navigation**: while a user sits on one screen, quietly
+  prefetch the data for likely-next screens (e.g. Transactions while on
+  Budgets home) so navigating there feels instant too.
+- Likely implementation: TanStack Query (React Query) with a persisted
+  cache (AsyncStorage/MMKV), which supports this pattern (cache-first
+  render, background refetch, `prefetchQuery`) without much custom
+  infrastructure.
+- This makes backend cold-starts mostly invisible on repeat app opens —
+  only a genuinely first-ever launch (empty cache) waits on the network.
 
 ## 11. Success Metrics
 
@@ -285,14 +360,14 @@ complaint (manual-entry-only causes budget "drift" when entries are
 missed) is a real risk for our own manual/CSV-hybrid model too, worth a
 stale-data warning somewhere in the UI.
 
-**Receipt/photo capture** — Monarch Money is the clear leader here and the
-one differentiator worth calling out explicitly: it extracts
-merchant/amount/date via AI *and* **stores the receipt image itself**
+**Receipt/photo capture** — Monarch Money is the clear leader here: it
+extracts merchant/amount/date via AI *and* stores the receipt image itself
 attached to the transaction as a durable record (useful for tax/dispute
 purposes later). YNAB, Copilot, PocketGuard, and Rocket Money all skip
-image persistence entirely — this is a real gap in the market, not table
-stakes. **Added to §8.6 as an explicit requirement below**, not just OCR
-pre-fill.
+image persistence entirely, same as we've decided to (§8.6, 2026-09-15) —
+we're matching the majority here (extract-then-discard), not Monarch's
+approach, a deliberate tradeoff against §10a's smaller-data-footprint
+preference under end-to-end encryption.
 
 **Quick-add / low-friction entry** — no reviewed app does Venmo-screenshot
 or SMS-parsing quick-add well; that's a genuine differentiation opportunity
@@ -358,16 +433,30 @@ Script's Web App model that aren't fixable from our side:
   fully serialize, which matters more once two people are actively using
   one shared household dataset instead of two independent ones.
 
-**Target replacement**: a small HTTP service (Node/Express or similar) on
-a normal free-tier host (Cloud Run, Fly.io, Render, or Railway are the
-live options as of this review) talking to a real database (Postgres is
-the default choice — encrypted at rest by most managed providers, real
-indexes, real transactions). This also directly resolves the §10 security
-gaps (real password hashing, session expiry, encryption at rest) as one
-migration rather than three separate efforts. The already-open Google
-OAuth access plan (`feature/google-oauth-access` branch, issue #2) is
-**superseded** by this decision — there's no more "Apps Script access
-setting" to fix once the backend isn't Apps Script.
+**Target replacement**: Express on Render, Postgres on Neon — decided
+2026-09-15 after evaluating free-tier options hands-on (Fly.io no longer
+offers a free tier for new accounts as of 2026; Railway's free allowance is
+a few hours of trial credit, not persistent hosting). This also directly
+resolves the §10 security gaps (real password hashing, session expiry) as
+one migration rather than three separate efforts, and — per §10a — the
+server now only ever stores/relays ciphertext, going beyond the original
+"encrypted at rest" bar. The already-open Google OAuth access plan
+(`feature/google-oauth-access` branch, issue #2) is **superseded** by this
+decision — there's no more "Apps Script access setting" to fix once the
+backend isn't Apps Script.
+
+**Cold-start handling (decision, 2026-09-15)**: Neon's free-tier compute
+scales to zero after 5 min idle but wakes in under a second — not a
+concern. Render's free web service spins down after 15 min idle and takes
+~1 minute to wake — mitigated with an external cron ping (e.g.
+cron-job.org hitting a `/health` endpoint every 14 minutes) to keep it
+warm, plus the client-side cache-first UX in §10b so even a cold hit is
+mostly invisible to the user. Render's free tier gives 750
+instance-hours/workspace/month; keeping one service pinged awake 24/7 uses
+nearly all of that budget, leaving no room for a second free service in
+the same workspace — acceptable since this is the only service planned. If
+guaranteed always-on uptime is wanted later, Render's cheapest paid tier
+(~$7/mo) removes spin-down entirely without any code change.
 
 ## 15. Open Questions
 
@@ -376,5 +465,4 @@ setting" to fix once the backend isn't Apps Script.
 - Seasonal budgets already work manually (set a different amount for a category in a given month) — open: what does a reusable "recurring seasonal override" template actually look like (which months, which categories, does it auto-apply or just pre-fill for review)?
 - Monthly reports: archived snapshot per past month, or always recomputed live from current data? Affects whether a later edit to a past transaction should retroactively change an old month's report.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
-- §14a: which of Cloud Run / Fly.io / Render / Railway actually fits best once evaluated hands-on (cost at real usage, cold-start behavior, ease of Postgres pairing)?
-- §8.6: does extraction run on-device or server-side, and does that answer depend on which backend host is chosen?
+- §10a: removing a household member doesn't yet revoke their previously-synced local access or rotate the household DEK — needs a design before a member-removal flow ships (not blocking today's 2-person trusted household).

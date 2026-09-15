@@ -1,11 +1,25 @@
-// Data model per PRD.md §9 (and §5b for the household/invite design).
+// Data model per PRD.md §9, §5b (household/invite design), and §10a
+// (end-to-end encryption, decided 2026-09-15).
+//
 // IDs are UUIDs (cuid would also work; UUID chosen to match the appscript
 // backend's Utilities.getUuid()-based ids, so a future data migration from
 // the live Sheets DB doesn't need to remap every id).
+//
+// Encryption convention (§10a): any field holding financial content
+// (amounts, descriptions, category/account names, rule patterns) is never
+// stored as a plaintext column. Instead each such row carries:
+//   - encryptedData: Bytes  — libsodium crypto_secretbox_easy ciphertext of
+//     a JSON payload holding that model's sensitive fields, keyed by the
+//     household's Data Encryption Key (DEK), which the server never holds.
+//   - nonce: Bytes          — the 24-byte nonce used for that secretbox.
+// Columns that stay plaintext are either non-sensitive routing/list
+// metadata (ids, timestamps, dates, month strings) or foreign keys (an id
+// reference doesn't leak the referenced row's encrypted content).
 
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (PgBouncer) — used by the app at runtime
+  directUrl = env("DIRECT_URL") // unpooled — required for prisma migrate against Neon
 }
 
 generator client {
@@ -31,6 +45,11 @@ model Household {
   budgets       Budget[]
 }
 
+// Auth + key-material identity for a user. passwordHash is a normal login
+// verifier (argon2/bcrypt) and is unrelated to the encryption key material
+// below — never derive the DEK-wrapping key from the same raw value the
+// server checks at login without a KDF in between (see §10a: the server
+// must never be able to reconstruct decryption keys from what it stores).
 model User {
   id             String    @id @default(uuid())
   username       String    @unique
@@ -38,6 +57,19 @@ model User {
   failedAttempts Int       @default(0)
   lockedUntil    DateTime?
   createdAt      DateTime  @default(now())
+
+  // Public-key identity (libsodium crypto_box keypair), used so other
+  // household members can wrap the household DEK to this user without
+  // needing them online at invite time (crypto_box_seal, §10a).
+  publicKey String // base64, safe to be plaintext — this is the public half
+
+  // The matching private key, encrypted client-side with a key derived
+  // (Argon2id, using kdfSalt) from the user's password. The server only
+  // ever stores/relays this ciphertext.
+  encryptedPrivateKey String // base64 ciphertext
+  privateKeyNonce     String // base64, secretbox nonce for the above
+  kdfSalt             String // base64, Argon2id salt for re-deriving the
+  //                            password-wrapping key on a new device/login
 
   memberships         HouseholdMember[]
   sessions            Session[]
@@ -49,11 +81,28 @@ model User {
 // Membership is a relationship, not a column on User — see PRD §5b. A user
 // belonging to more than one household later needs no schema change here,
 // just a "which household am I acting in" concept client-side.
+//
+// Also where each member's copy of the household DEK lives (§10a): one
+// copy sealed to their public key (day-to-day unlock via password), and a
+// second copy wrapped with their own recovery key (self-service recovery
+// if the password is lost — see PRD §10a's account-recovery decision).
+// Losing both is unrecoverable by design; the household's data isn't lost
+// since other members keep their own working copies.
 model HouseholdMember {
   householdId String
   userId      String
   role        HouseholdRole @default(MEMBER)
   joinedAt    DateTime      @default(now())
+
+  // Household DEK sealed to this member's publicKey (crypto_box_seal —
+  // no separate nonce needed, the ephemeral key rides in the ciphertext).
+  wrappedDek String // base64
+
+  // Household DEK encrypted (crypto_secretbox_easy) with a high-entropy
+  // recovery key generated client-side at join time and shown to the user
+  // once to store themselves — the server never sees the recovery key.
+  recoveryWrappedDek String // base64
+  recoveryDekNonce   String // base64
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -89,60 +138,80 @@ model Session {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
+// name/type/institution are encrypted (§10a) — the server knows a
+// household has an account with this id, not what it's called or what
+// kind it is.
 model Account {
-  id          String  @id @default(uuid())
+  id          String @id @default(uuid())
   householdId String
-  name        String
-  type        String
-  institution String?
+
+  encryptedData String // base64 — { name, type, institution }
+  nonce         String // base64
 
   createdAt    DateTime      @default(now())
   household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
   transactions Transaction[]
 }
 
+// name is encrypted (§10a) — uniqueness-per-household is now enforced
+// client-side (decrypt the household's categories, check for a name
+// collision) rather than via a DB constraint, since the server can't read
+// names to compare them.
 model Category {
   id          String @id @default(uuid())
   householdId String
-  name        String
+
+  encryptedData String // base64 — { name }
+  nonce         String // base64
 
   household    Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
   rules        CategoryRule[]
   transactions Transaction[]
   budgets      Budget[]
-
-  @@unique([householdId, name])
 }
 
+// pattern (the merchant/keyword match string) is encrypted (§10a) —
+// matching a transaction description against household rules now happens
+// client-side, alongside categorization generally, since the server never
+// holds plaintext descriptions or patterns to compare.
 model CategoryRule {
   id          String @id @default(uuid())
   householdId String
-  pattern     String
   categoryId  String
+
+  encryptedData String // base64 — { pattern }
+  nonce         String // base64
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
-
-  @@unique([householdId, pattern])
 }
 
 model Transaction {
-  id     String @id @default(uuid())
+  id          String @id @default(uuid())
   householdId String
   accountId   String
+  categoryId  String?
 
-  // Kept as YYYY-MM-DD strings (not a Date column) to match the existing
-  // month-prefix filtering logic ported from the appscript backend as-is —
-  // revisit if/when that filtering gets rewritten as a real date-range query.
-  date                  String
-  description           String
-  normalizedDescription String
-  amount                Float
-  categoryId            String?
-  reviewed              Boolean  @default(false)
-  dedupKey              String
-  createdByUserId       String?
-  createdAt             DateTime @default(now())
+  // Kept plaintext (§10a: minimal metadata needed to route/list) as a
+  // YYYY-MM-DD string, matching the existing month-prefix filtering logic
+  // ported from the appscript backend — revisit if that filtering becomes
+  // a real date-range query.
+  date String
+
+  // description, normalizedDescription, and amount are encrypted (§10a):
+  // { description, normalizedDescription, amount }
+  encryptedData String // base64
+  nonce         String // base64
+
+  // Deterministic, keyed dedup fingerprint — HMAC(householdDEK, date +
+  // "|" + amount + "|" + normalizedDescription), computed client-side, so
+  // the server can still enforce "no duplicate transaction per account"
+  // via a DB unique constraint without ever seeing the underlying values.
+  dedupKey String
+
+  reviewed        Boolean  @default(false)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
@@ -153,12 +222,18 @@ model Transaction {
   @@index([householdId, date])
 }
 
+// amount is encrypted (§10a); householdId/categoryId/month stay plaintext
+// since they're just routing keys, not financial content, and the
+// existing @@unique constraint (one budget row per category per month)
+// still works unchanged since it doesn't touch the encrypted field.
 model Budget {
   id          String @id @default(uuid())
   householdId String
   categoryId  String
   month       String // YYYY-MM
-  amount      Float
+
+  encryptedData String // base64 — { amount }
+  nonce         String // base64
 
   household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
   category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
