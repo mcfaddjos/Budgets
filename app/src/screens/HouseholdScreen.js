@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
+import { seedSeptemberDemoData } from "../data/devSeed";
 
 const INVITE_EXPIRES_IN_DAYS = 7;
 
@@ -18,6 +20,8 @@ export default function HouseholdScreen() {
   const [invite, setInvite] = useState(null);
   const [creatingInvite, setCreatingInvite] = useState(false);
   const [grantingUserId, setGrantingUserId] = useState(null);
+  const [seeding, setSeeding] = useState(false);
+  const queryClient = useQueryClient();
 
   const loadPending = useCallback(async () => {
     try {
@@ -54,6 +58,22 @@ export default function HouseholdScreen() {
       Alert.alert("Couldn't grant access", err.message);
     } finally {
       setGrantingUserId(null);
+    }
+  }
+
+  async function handleSeedDemoData() {
+    setSeeding(true);
+    try {
+      const result = await seedSeptemberDemoData(activeHouseholdId);
+      await queryClient.invalidateQueries();
+      Alert.alert(
+        "Demo data seeded",
+        `${result.categoriesCreated} categories, ${result.budgetsSet} budgets, ${result.transactionsCreated} transactions.\n\n${result.skipped}`
+      );
+    } catch (err) {
+      Alert.alert("Couldn't seed demo data", err.message);
+    } finally {
+      setSeeding(false);
     }
   }
 
@@ -111,6 +131,19 @@ export default function HouseholdScreen() {
           />
         )}
       </View>
+
+      {__DEV__ ? (
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Dev tools</Text>
+          <Text style={styles.sectionHint}>
+            Never shown in a release build. Seeds this household with the real category names and
+            confidently-parseable transactions from the September spreadsheet.
+          </Text>
+          <TouchableOpacity style={styles.button} onPress={handleSeedDemoData} disabled={seeding}>
+            <Text style={styles.buttonText}>{seeding ? "Seeding…" : "Seed September Demo Data"}</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
     </View>
   );
 }

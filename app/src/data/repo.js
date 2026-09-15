@@ -100,7 +100,10 @@ export async function listTransactions(householdId, params) {
  * and that stays true now; the content-hash form is for statement import,
  * not built yet.
  */
-export async function createManualTransaction(householdId, { accountId, categoryId, amount, description, fallbackDescription }) {
+export async function createManualTransaction(
+  householdId,
+  { accountId, categoryId, amount, description, fallbackDescription, date }
+) {
   const dek = session.getHouseholdDek(householdId);
   const finalDescription = (description || "").trim() || fallbackDescription || "";
   const { encryptedData, nonce } = await records.encryptRecord(dek, {
@@ -111,7 +114,7 @@ export async function createManualTransaction(householdId, { accountId, category
   return api.createTransaction({
     accountId,
     categoryId,
-    date: new Date().toISOString().slice(0, 10),
+    date: date || new Date().toISOString().slice(0, 10),
     encryptedData,
     nonce,
     dedupKey: randomDedupKey(),
