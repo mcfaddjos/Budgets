@@ -1,0 +1,6 @@
+# IDE project metadata (Android Studio / IntelliJ) — local only, never shared.
+.idea/
+
+# OS cruft
+.DS_Store
+Thumbs.db

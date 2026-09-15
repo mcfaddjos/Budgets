@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -10,41 +10,19 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import * as repo from "../data/repo";
+import { useAccounts, useCreateAccount, useDeleteAccount } from "../data/queries";
 
 const ACCOUNT_TYPES = ["checking", "savings"];
 
 export default function AccountsScreen() {
-  const { activeHouseholdId } = useAuth();
-  const [accounts, setAccounts] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const { data: accounts = [], isPending, isFetching, refetch } = useAccounts();
+  const createAccount = useCreateAccount();
+  const deleteAccount = useDeleteAccount();
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("");
   const [type, setType] = useState("checking");
   const [deletingId, setDeletingId] = useState(null);
-
-  const loadAccounts = useCallback(async () => {
-    try {
-      setAccounts(await repo.listAccounts(activeHouseholdId));
-    } catch (err) {
-      Alert.alert("Couldn't load accounts", err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeHouseholdId]);
-
-  useEffect(() => {
-    loadAccounts();
-  }, [loadAccounts]);
-
-  async function handleRefresh() {
-    setRefreshing(true);
-    await loadAccounts();
-    setRefreshing(false);
-  }
 
   async function handleAddAccount() {
     if (!name.trim()) {
@@ -52,12 +30,11 @@ export default function AccountsScreen() {
       return;
     }
     try {
-      await repo.createAccount(activeHouseholdId, { name: name.trim(), type, institution: institution.trim() || null });
+      await createAccount.mutateAsync({ name: name.trim(), type, institution: institution.trim() || null });
       setName("");
       setInstitution("");
       setType("checking");
       setShowForm(false);
-      loadAccounts();
     } catch (err) {
       Alert.alert("Couldn't add account", err.message);
     }
@@ -75,8 +52,7 @@ export default function AccountsScreen() {
           onPress: async () => {
             setDeletingId(account.id);
             try {
-              await repo.deleteAccount(account.id);
-              setAccounts((prev) => prev.filter((a) => a.id !== account.id));
+              await deleteAccount.mutateAsync(account.id);
             } catch (err) {
               Alert.alert("Couldn't delete account", err.message);
             } finally {
@@ -90,7 +66,7 @@ export default function AccountsScreen() {
 
   return (
     <View style={styles.container}>
-      {loading ? (
+      {isPending ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>Loading accounts…</Text>
@@ -99,7 +75,7 @@ export default function AccountsScreen() {
         <FlatList
           data={accounts}
           keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <Text style={styles.empty}>No accounts yet. Add your first account below.</Text>

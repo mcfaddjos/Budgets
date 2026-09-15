@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,8 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import * as repo from "../data/repo";
+import { useBudgetSummary, useCreateCategory, useSetBudget, useUpdateCategory } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
 
 function currentMonth() {
@@ -25,10 +24,15 @@ function formatMoney(amount) {
 }
 
 export default function BudgetsScreen() {
-  const { activeHouseholdId } = useAuth();
-  const [data, setData] = useState({ categories: [], totals: { budget: 0, actual: 0, variance: 0 } });
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const month = currentMonth();
+  const { data, isPending, isFetching, refetch } = useBudgetSummary(month);
+  const updateCategory = useUpdateCategory();
+  const setBudget = useSetBudget();
+  const createCategory = useCreateCategory();
+
+  const categories = data?.categories ?? [];
+  const totals = data?.totals ?? { budget: 0, actual: 0, variance: 0 };
+
   const [editing, setEditing] = useState(null);
   const [amountInput, setAmountInput] = useState("");
   const [nameInput, setNameInput] = useState("");
@@ -37,28 +41,6 @@ export default function BudgetsScreen() {
   const [addCategoryVisible, setAddCategoryVisible] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
-
-  const month = currentMonth();
-
-  const load = useCallback(async () => {
-    try {
-      setData(await repo.getBudgetSummary(activeHouseholdId, month));
-    } catch (err) {
-      Alert.alert("Couldn't load budgets", err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [month, activeHouseholdId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function handleRefresh() {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }
 
   function openEditor(category) {
     setEditing(category);
@@ -80,11 +62,10 @@ export default function BudgetsScreen() {
     setSavingBudget(true);
     try {
       if (name !== editing.categoryName) {
-        await repo.updateCategory(activeHouseholdId, editing.categoryId, name);
+        await updateCategory.mutateAsync({ id: editing.categoryId, name });
       }
-      await repo.setBudget(activeHouseholdId, editing.categoryId, month, amount);
+      await setBudget.mutateAsync({ categoryId: editing.categoryId, month, amount });
       setEditing(null);
-      load();
     } catch (err) {
       Alert.alert("Couldn't save", err.message);
     } finally {
@@ -100,10 +81,9 @@ export default function BudgetsScreen() {
     }
     setSavingCategory(true);
     try {
-      await repo.createCategory(activeHouseholdId, name);
+      await createCategory.mutateAsync(name);
       setNewCategoryName("");
       setAddCategoryVisible(false);
-      load();
     } catch (err) {
       Alert.alert("Couldn't add category", err.message);
     } finally {
@@ -116,12 +96,12 @@ export default function BudgetsScreen() {
       <View style={styles.summary}>
         <Text style={styles.summaryLabel}>{month}</Text>
         <View style={styles.summaryRow}>
-          <SummaryStat label="Budgeted" value={formatMoney(data.totals.budget)} />
-          <SummaryStat label="Spent" value={formatMoney(data.totals.actual)} />
+          <SummaryStat label="Budgeted" value={formatMoney(totals.budget)} />
+          <SummaryStat label="Spent" value={formatMoney(totals.actual)} />
           <SummaryStat
             label="Left"
-            value={formatMoney(data.totals.variance)}
-            color={data.totals.variance < 0 ? "#c0392b" : "#2a8a4a"}
+            value={formatMoney(totals.variance)}
+            color={totals.variance < 0 ? "#c0392b" : "#2a8a4a"}
           />
         </View>
         <View style={styles.summaryActions}>
@@ -131,16 +111,16 @@ export default function BudgetsScreen() {
         </View>
       </View>
 
-      {loading ? (
+      {isPending ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>Loading budgets…</Text>
         </View>
       ) : (
         <FlatList
-          data={data.categories}
+          data={categories}
           keyExtractor={(item) => String(item.categoryId)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
           contentContainerStyle={styles.list}
           ListFooterComponent={
             <TouchableOpacity style={styles.addCategoryButton} onPress={() => setAddCategoryVisible(true)}>
@@ -229,10 +209,7 @@ export default function BudgetsScreen() {
       <AddTransactionModal
         visible={addTxVisible}
         onClose={() => setAddTxVisible(false)}
-        onSaved={() => {
-          setAddTxVisible(false);
-          load();
-        }}
+        onSaved={() => setAddTxVisible(false)}
       />
     </View>
   );

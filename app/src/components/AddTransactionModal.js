@@ -1,51 +1,35 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import * as repo from "../data/repo";
+import { useCreateManualTransaction, useTransactionFormOptions } from "../data/queries";
 
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
  * buttons, no account implied) — the account picker only shows when there's
- * more than one account to choose from. Loads its own accounts/categories
- * on open rather than trusting the parent screen's already-loaded state, so
- * it has an honest loading/error state instead of silently showing nothing
- * while data is in flight (indistinguishable from "no categories exist").
+ * more than one account to choose from.
  */
 export default function AddTransactionModal({ visible, initialAccountId, onClose, onSaved }) {
-  const { activeHouseholdId } = useAuth();
-  const [accounts, setAccounts] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [loadError, setLoadError] = useState(null);
+  const { data, isPending, isError, error, refetch } = useTransactionFormOptions();
+  const createTransaction = useCreateManualTransaction();
+  const accounts = data?.accounts ?? [];
+  const categories = data?.categories ?? [];
+
   const [accountId, setAccountId] = useState(null);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(null);
-  const [saving, setSaving] = useState(false);
-
-  const loadOptions = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      const { accounts: accts, categories: cats } = await repo.getTransactionFormOptions(activeHouseholdId);
-      setAccounts(accts);
-      setCategories(cats);
-      setAccountId(initialAccountId || accts[0]?.id || null);
-    } catch (err) {
-      setLoadError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [initialAccountId, activeHouseholdId]);
 
   useEffect(() => {
     if (visible) {
       setAmount("");
       setDescription("");
       setCategoryId(null);
-      loadOptions();
+      setAccountId(initialAccountId || null);
     }
-  }, [visible, loadOptions]);
+  }, [visible, initialAccountId]);
+
+  useEffect(() => {
+    if (visible && !accountId && accounts.length > 0) setAccountId(accounts[0].id);
+  }, [visible, accountId, accounts]);
 
   async function handleSave() {
     const amt = parseFloat(amount);
@@ -62,9 +46,8 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
       return;
     }
     const category = categories.find((c) => c.id === categoryId);
-    setSaving(true);
     try {
-      await repo.createManualTransaction(activeHouseholdId, {
+      await createTransaction.mutateAsync({
         accountId,
         categoryId,
         amount: amt,
@@ -75,8 +58,6 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
       onSaved();
     } catch (err) {
       Alert.alert("Couldn't add transaction", err.message);
-    } finally {
-      setSaving(false);
     }
   }
 
@@ -86,15 +67,15 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
         <View style={styles.modalCard}>
           <Text style={styles.modalTitle}>Add transaction</Text>
 
-          {loading ? (
+          {isPending ? (
             <View style={styles.loadingBox}>
               <ActivityIndicator />
               <Text style={styles.loadingText}>Loading accounts and categories…</Text>
             </View>
-          ) : loadError ? (
+          ) : isError ? (
             <View style={styles.loadingBox}>
-              <Text style={styles.errorText}>{loadError}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={loadOptions}>
+              <Text style={styles.errorText}>{error.message}</Text>
+              <TouchableOpacity style={styles.retryButton} onPress={refetch}>
                 <Text style={styles.retryButtonText}>Retry</Text>
               </TouchableOpacity>
             </View>
@@ -159,9 +140,9 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
             <TouchableOpacity
               style={styles.primaryButton}
               onPress={handleSave}
-              disabled={saving || loading || !!loadError}
+              disabled={createTransaction.isPending || isPending || isError}
             >
-              <Text style={styles.primaryButtonText}>{saving ? "Saving…" : "Save"}</Text>
+              <Text style={styles.primaryButtonText}>{createTransaction.isPending ? "Saving…" : "Save"}</Text>
             </TouchableOpacity>
           </View>
         </View>

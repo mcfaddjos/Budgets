@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,8 +11,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useAuth } from "../context/AuthContext";
-import * as repo from "../data/repo";
+import {
+  useCategories,
+  useDeleteTransaction,
+  useRecategorizeTransaction,
+  useToggleReviewed,
+  useTransactions,
+} from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
 
 function currentMonth() {
@@ -25,40 +30,15 @@ function formatAmount(amount) {
 }
 
 export default function TransactionsScreen() {
-  const { activeHouseholdId } = useAuth();
-  const [transactions, setTransactions] = useState([]);
-  const [categories, setCategories] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
+  const month = currentMonth();
+  const { data: transactions = [], isPending, isFetching, refetch } = useTransactions(month);
+  const { data: categories = [] } = useCategories();
+  const toggleReviewed = useToggleReviewed();
+  const recategorize = useRecategorizeTransaction();
+  const deleteTransaction = useDeleteTransaction();
+
   const [pickerTx, setPickerTx] = useState(null);
   const [addTxVisible, setAddTxVisible] = useState(false);
-
-  const month = currentMonth();
-
-  const load = useCallback(async () => {
-    try {
-      const [txs, cats] = await Promise.all([
-        repo.listTransactions(activeHouseholdId, { month }),
-        repo.listCategories(activeHouseholdId),
-      ]);
-      setTransactions(txs);
-      setCategories(cats);
-    } catch (err) {
-      Alert.alert("Couldn't load transactions", err.message);
-    } finally {
-      setLoading(false);
-    }
-  }, [month, activeHouseholdId]);
-
-  useEffect(() => {
-    load();
-  }, [load]);
-
-  async function handleRefresh() {
-    setRefreshing(true);
-    await load();
-    setRefreshing(false);
-  }
 
   function categoryName(categoryId) {
     return categories.find((c) => c.id === categoryId)?.name ?? "Uncategorized";
@@ -66,8 +46,7 @@ export default function TransactionsScreen() {
 
   async function handleToggleReviewed(tx) {
     try {
-      const updated = await repo.toggleReviewed(tx);
-      setTransactions((prev) => prev.map((t) => (t.id === tx.id ? updated : t)));
+      await toggleReviewed.mutateAsync(tx);
     } catch (err) {
       Alert.alert("Couldn't update transaction", err.message);
     }
@@ -76,8 +55,7 @@ export default function TransactionsScreen() {
   async function handlePickCategory(category) {
     if (!pickerTx) return;
     try {
-      const updated = await repo.recategorizeTransaction(activeHouseholdId, pickerTx, category.id, true);
-      setTransactions((prev) => prev.map((t) => (t.id === pickerTx.id ? updated : t)));
+      await recategorize.mutateAsync({ tx: pickerTx, categoryId: category.id, applyRule: true });
     } catch (err) {
       Alert.alert("Couldn't update category", err.message);
     } finally {
@@ -93,8 +71,7 @@ export default function TransactionsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await repo.deleteTransaction(tx.id);
-            setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
+            await deleteTransaction.mutateAsync(tx.id);
           } catch (err) {
             Alert.alert("Couldn't delete transaction", err.message);
           }
@@ -112,7 +89,7 @@ export default function TransactionsScreen() {
         </TouchableOpacity>
       </View>
 
-      {loading ? (
+      {isPending ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator />
           <Text style={styles.loadingText}>Loading transactions…</Text>
@@ -121,7 +98,7 @@ export default function TransactionsScreen() {
         <FlatList
           data={transactions}
           keyExtractor={(item) => String(item.id)}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
+          refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
             <Text style={styles.empty}>No transactions this month yet. Add one to get started.</Text>
@@ -167,10 +144,7 @@ export default function TransactionsScreen() {
       <AddTransactionModal
         visible={addTxVisible}
         onClose={() => setAddTxVisible(false)}
-        onSaved={() => {
-          setAddTxVisible(false);
-          load();
-        }}
+        onSaved={() => setAddTxVisible(false)}
       />
     </View>
   );
