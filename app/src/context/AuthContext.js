@@ -33,6 +33,14 @@ export function AuthProvider({ children }) {
   const [ready, setReady] = useState(false);
   const [serverUrl, setServerUrlState] = useState(getServerUrl());
 
+  // v1 is single-household (§5b leaves room for more later) — the first
+  // membership that's actually unlocked (has a DEK loaded) is "the"
+  // household the rest of the app operates on. A membership stuck at
+  // wrappedDek === null (pending an access grant) never counts here, even
+  // though it's already in `memberships` — that's what tells App.js to
+  // show the "waiting for access" screen instead of the normal tabs.
+  const activeHouseholdId = memberships.find((m) => session.hasHouseholdDek(m.householdId))?.householdId || null;
+
   useEffect(() => {
     loadPersistedSession().then(async ({ serverUrl: url, token }) => {
       setServerUrlState(url);
@@ -108,8 +116,9 @@ export function AuthProvider({ children }) {
     applyIdentity({ ...result.user, ...forServer, memberships: [{ householdId: result.householdId, role: "OWNER", wrappedDek }] });
 
     await seedDefaultCategories(dek);
+    setPendingRecoveryCode({ householdId: result.householdId, code: keys.recoveryKeyToDisplayString(recoveryKey) });
 
-    return { householdId: result.householdId, recoveryCode: keys.recoveryKeyToDisplayString(recoveryKey) };
+    return true;
   }
 
   async function seedDefaultCategories(dek) {
@@ -217,6 +226,7 @@ export function AuthProvider({ children }) {
       value={{
         user,
         memberships,
+        activeHouseholdId,
         unlocked,
         ready,
         serverUrl,

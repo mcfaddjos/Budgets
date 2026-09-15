@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import * as repo from "../data/repo";
 
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
@@ -11,6 +12,7 @@ import { api } from "../api/client";
  * while data is in flight (indistinguishable from "no categories exist").
  */
 export default function AddTransactionModal({ visible, initialAccountId, onClose, onSaved }) {
+  const { activeHouseholdId } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -25,7 +27,7 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
     setLoading(true);
     setLoadError(null);
     try {
-      const { accounts: accts, categories: cats } = await api.getTransactionFormOptions();
+      const { accounts: accts, categories: cats } = await repo.getTransactionFormOptions(activeHouseholdId);
       setAccounts(accts);
       setCategories(cats);
       setAccountId(initialAccountId || accts[0]?.id || null);
@@ -34,7 +36,7 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
     } finally {
       setLoading(false);
     }
-  }, [initialAccountId]);
+  }, [initialAccountId, activeHouseholdId]);
 
   useEffect(() => {
     if (visible) {
@@ -59,10 +61,17 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
       Alert.alert("Category required", "Pick a category.");
       return;
     }
+    const category = categories.find((c) => c.id === categoryId);
     setSaving(true);
     try {
-      await api.createTransaction(accountId, amt, categoryId, description.trim());
-      Alert.alert("Transaction added", `${description.trim() || "(no description)"} — $${amt.toFixed(2)}`);
+      await repo.createManualTransaction(activeHouseholdId, {
+        accountId,
+        categoryId,
+        amount: amt,
+        description: description.trim(),
+        fallbackDescription: category?.name,
+      });
+      Alert.alert("Transaction added", `${description.trim() || category?.name || "(no description)"} — $${amt.toFixed(2)}`);
       onSaved();
     } catch (err) {
       Alert.alert("Couldn't add transaction", err.message);

@@ -11,7 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import * as repo from "../data/repo";
 import AddTransactionModal from "../components/AddTransactionModal";
 
 function currentMonth() {
@@ -24,6 +25,7 @@ function formatMoney(amount) {
 }
 
 export default function BudgetsScreen() {
+  const { activeHouseholdId } = useAuth();
   const [data, setData] = useState({ categories: [], totals: { budget: 0, actual: 0, variance: 0 } });
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -31,7 +33,6 @@ export default function BudgetsScreen() {
   const [amountInput, setAmountInput] = useState("");
   const [nameInput, setNameInput] = useState("");
   const [savingBudget, setSavingBudget] = useState(false);
-  const [syncing, setSyncing] = useState(false);
   const [addTxVisible, setAddTxVisible] = useState(false);
   const [addCategoryVisible, setAddCategoryVisible] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
@@ -41,13 +42,13 @@ export default function BudgetsScreen() {
 
   const load = useCallback(async () => {
     try {
-      setData(await api.getBudgets(month));
+      setData(await repo.getBudgetSummary(activeHouseholdId, month));
     } catch (err) {
       Alert.alert("Couldn't load budgets", err.message);
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, activeHouseholdId]);
 
   useEffect(() => {
     load();
@@ -79,9 +80,9 @@ export default function BudgetsScreen() {
     setSavingBudget(true);
     try {
       if (name !== editing.categoryName) {
-        await api.updateCategory(editing.categoryId, name);
+        await repo.updateCategory(activeHouseholdId, editing.categoryId, name);
       }
-      await api.setBudget(editing.categoryId, month, amount);
+      await repo.setBudget(activeHouseholdId, editing.categoryId, month, amount);
       setEditing(null);
       load();
     } catch (err) {
@@ -99,7 +100,7 @@ export default function BudgetsScreen() {
     }
     setSavingCategory(true);
     try {
-      await api.createCategory(name);
+      await repo.createCategory(activeHouseholdId, name);
       setNewCategoryName("");
       setAddCategoryVisible(false);
       load();
@@ -107,22 +108,6 @@ export default function BudgetsScreen() {
       Alert.alert("Couldn't add category", err.message);
     } finally {
       setSavingCategory(false);
-    }
-  }
-
-  async function handleSyncQuickAdd() {
-    setSyncing(true);
-    try {
-      const summary = await api.importQuickAddBudgets();
-      Alert.alert(
-        "Quick Add synced",
-        `${summary.applied} budget(s) applied, ${summary.skippedUnknownCategory} skipped (unknown category).`
-      );
-      load();
-    } catch (err) {
-      Alert.alert("Sync failed", err.message);
-    } finally {
-      setSyncing(false);
     }
   }
 
@@ -142,9 +127,6 @@ export default function BudgetsScreen() {
         <View style={styles.summaryActions}>
           <TouchableOpacity style={styles.addButton} onPress={() => setAddTxVisible(true)}>
             <Text style={styles.addButtonText}>+ Add Transaction</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.syncButton} onPress={handleSyncQuickAdd} disabled={syncing}>
-            <Text style={styles.syncButtonText}>{syncing ? "Syncing…" : "Sync Quick Add"}</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -281,15 +263,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addButtonText: { color: "#fff", fontWeight: "600" },
-  syncButton: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: "#1a6ed8",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  syncButtonText: { color: "#1a6ed8", fontWeight: "600" },
   stat: { alignItems: "center", flex: 1 },
   statLabel: { fontSize: 12, color: "#999" },
   statValue: { fontSize: 18, fontWeight: "700", marginTop: 2 },

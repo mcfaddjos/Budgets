@@ -4,6 +4,7 @@ const TABS = [
   { key: "accounts", label: "Accounts" },
   { key: "transactions", label: "Transactions" },
   { key: "budgets", label: "Budgets" },
+  { key: "household", label: "Household" },
 ];
 
 export default function TabBar({ active, onChange }) {

@@ -11,7 +11,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import * as repo from "../data/repo";
 import AddTransactionModal from "../components/AddTransactionModal";
 
 function currentMonth() {
@@ -24,6 +25,7 @@ function formatAmount(amount) {
 }
 
 export default function TransactionsScreen() {
+  const { activeHouseholdId } = useAuth();
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -35,7 +37,10 @@ export default function TransactionsScreen() {
 
   const load = useCallback(async () => {
     try {
-      const [txs, cats] = await Promise.all([api.getTransactions({ month }), api.getCategories()]);
+      const [txs, cats] = await Promise.all([
+        repo.listTransactions(activeHouseholdId, { month }),
+        repo.listCategories(activeHouseholdId),
+      ]);
       setTransactions(txs);
       setCategories(cats);
     } catch (err) {
@@ -43,7 +48,7 @@ export default function TransactionsScreen() {
     } finally {
       setLoading(false);
     }
-  }, [month]);
+  }, [month, activeHouseholdId]);
 
   useEffect(() => {
     load();
@@ -61,7 +66,7 @@ export default function TransactionsScreen() {
 
   async function handleToggleReviewed(tx) {
     try {
-      const updated = await api.updateTransaction(tx.id, { reviewed: !tx.reviewed });
+      const updated = await repo.toggleReviewed(tx);
       setTransactions((prev) => prev.map((t) => (t.id === tx.id ? updated : t)));
     } catch (err) {
       Alert.alert("Couldn't update transaction", err.message);
@@ -71,10 +76,7 @@ export default function TransactionsScreen() {
   async function handlePickCategory(category) {
     if (!pickerTx) return;
     try {
-      const updated = await api.updateTransaction(pickerTx.id, {
-        categoryId: category.id,
-        applyRule: true,
-      });
+      const updated = await repo.recategorizeTransaction(activeHouseholdId, pickerTx, category.id, true);
       setTransactions((prev) => prev.map((t) => (t.id === pickerTx.id ? updated : t)));
     } catch (err) {
       Alert.alert("Couldn't update category", err.message);
@@ -91,7 +93,7 @@ export default function TransactionsScreen() {
         style: "destructive",
         onPress: async () => {
           try {
-            await api.deleteTransaction(tx.id);
+            await repo.deleteTransaction(tx.id);
             setTransactions((prev) => prev.filter((t) => t.id !== tx.id));
           } catch (err) {
             Alert.alert("Couldn't delete transaction", err.message);
@@ -122,7 +124,7 @@ export default function TransactionsScreen() {
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={handleRefresh} />}
           contentContainerStyle={styles.list}
           ListEmptyComponent={
-            <Text style={styles.empty}>No transactions this month yet. Import a statement.</Text>
+            <Text style={styles.empty}>No transactions this month yet. Add one to get started.</Text>
           }
           ListHeaderComponent={
             transactions.length > 0 ? <Text style={styles.hint}>Long-press a transaction to delete it.</Text> : null

@@ -10,12 +10,13 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import * as DocumentPicker from "expo-document-picker";
-import { api } from "../api/client";
+import { useAuth } from "../context/AuthContext";
+import * as repo from "../data/repo";
 
 const ACCOUNT_TYPES = ["checking", "savings"];
 
 export default function AccountsScreen() {
+  const { activeHouseholdId } = useAuth();
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -23,19 +24,17 @@ export default function AccountsScreen() {
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("");
   const [type, setType] = useState("checking");
-  const [importingId, setImportingId] = useState(null);
-  const [syncingId, setSyncingId] = useState(null);
   const [deletingId, setDeletingId] = useState(null);
 
   const loadAccounts = useCallback(async () => {
     try {
-      setAccounts(await api.getAccounts());
+      setAccounts(await repo.listAccounts(activeHouseholdId));
     } catch (err) {
       Alert.alert("Couldn't load accounts", err.message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeHouseholdId]);
 
   useEffect(() => {
     loadAccounts();
@@ -53,7 +52,7 @@ export default function AccountsScreen() {
       return;
     }
     try {
-      await api.createAccount({ name: name.trim(), type, institution: institution.trim() || null });
+      await repo.createAccount(activeHouseholdId, { name: name.trim(), type, institution: institution.trim() || null });
       setName("");
       setInstitution("");
       setType("checking");
@@ -61,45 +60,6 @@ export default function AccountsScreen() {
       loadAccounts();
     } catch (err) {
       Alert.alert("Couldn't add account", err.message);
-    }
-  }
-
-  async function handleImport(account) {
-    const result = await DocumentPicker.getDocumentAsync({
-      type: ["text/csv", "text/comma-separated-values", "application/vnd.ms-excel"],
-      copyToCacheDirectory: true,
-    });
-    if (result.canceled) return;
-
-    const file = result.assets?.[0];
-    if (!file) return;
-
-    setImportingId(account.id);
-    try {
-      const summary = await api.importStatement(account.id, file);
-      Alert.alert(
-        "Statement imported",
-        `${summary.imported} new transaction(s), ${summary.duplicates} already imported, ${summary.uncategorized} uncategorized.`
-      );
-    } catch (err) {
-      Alert.alert("Import failed", err.message);
-    } finally {
-      setImportingId(null);
-    }
-  }
-
-  async function handleSyncQuickAdd(account) {
-    setSyncingId(account.id);
-    try {
-      const summary = await api.importQuickAddTransactions(account.id);
-      Alert.alert(
-        "Quick Add synced",
-        `${summary.imported} new transaction(s), ${summary.duplicates} already imported, ${summary.uncategorized} uncategorized.`
-      );
-    } catch (err) {
-      Alert.alert("Sync failed", err.message);
-    } finally {
-      setSyncingId(null);
     }
   }
 
@@ -115,7 +75,7 @@ export default function AccountsScreen() {
           onPress: async () => {
             setDeletingId(account.id);
             try {
-              await api.deleteAccount(account.id);
+              await repo.deleteAccount(account.id);
               setAccounts((prev) => prev.filter((a) => a.id !== account.id));
             } catch (err) {
               Alert.alert("Couldn't delete account", err.message);
@@ -156,24 +116,6 @@ export default function AccountsScreen() {
                 </View>
               </View>
               {item.institution ? <Text style={styles.cardSubtitle}>{item.institution}</Text> : null}
-              <TouchableOpacity
-                style={styles.importButton}
-                onPress={() => handleImport(item)}
-                disabled={importingId === item.id}
-              >
-                <Text style={styles.importButtonText}>
-                  {importingId === item.id ? "Importing…" : "Import Statement (CSV)"}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.secondaryImportButton}
-                onPress={() => handleSyncQuickAdd(item)}
-                disabled={syncingId === item.id}
-              >
-                <Text style={styles.secondaryImportButtonText}>
-                  {syncingId === item.id ? "Syncing…" : "Sync Quick Add"}
-                </Text>
-              </TouchableOpacity>
             </View>
           )}
         />
@@ -255,23 +197,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
     textTransform: "uppercase",
   },
-  importButton: {
-    marginTop: 12,
-    backgroundColor: "#1a1a1a",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  importButtonText: { color: "#fff", fontWeight: "600" },
-  secondaryImportButton: {
-    marginTop: 8,
-    borderWidth: 1,
-    borderColor: "#1a6ed8",
-    borderRadius: 8,
-    paddingVertical: 10,
-    alignItems: "center",
-  },
-  secondaryImportButtonText: { color: "#1a6ed8", fontWeight: "600" },
   addButton: {
     margin: 16,
     marginTop: 8,

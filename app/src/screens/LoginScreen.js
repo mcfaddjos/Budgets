@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import {
   KeyboardAvoidingView,
   Platform,
@@ -10,39 +10,46 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import { onStatus } from "../api/client";
-import DebugLogsModal from "../components/DebugLogsModal";
+
+const MIN_PASSPHRASE_LENGTH = 10;
 
 export default function LoginScreen() {
-  const { serverUrl, updateServerUrl, login, register } = useAuth();
-  const [serverUrlInput, setServerUrlInput] = useState(serverUrl);
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { login, registerNewHousehold, joinHousehold } = useAuth();
+  const [mode, setMode] = useState("login"); // 'login' | 'create' | 'join'
+  const [vaultPassphrase, setVaultPassphrase] = useState("");
+  const [confirmPassphrase, setConfirmPassphrase] = useState("");
   const [inviteCode, setInviteCode] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
-  const [mode, setMode] = useState("login"); // 'login' | 'register'
+  const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState(null);
-  const [logsVisible, setLogsVisible] = useState(false);
-
-  useEffect(() => onStatus(setStatus), []);
 
   async function handleSubmit() {
     setError(null);
-    if (!username.trim() || !password) {
-      setError("Enter a username and password.");
+
+    if (vaultPassphrase.length < MIN_PASSPHRASE_LENGTH) {
+      setError(`Vault passphrase needs to be at least ${MIN_PASSPHRASE_LENGTH} characters.`);
       return;
     }
-    if (mode === "register" && !inviteCode.trim()) {
+    if (mode === "create" && vaultPassphrase !== confirmPassphrase) {
+      setError("Passphrases don't match.");
+      return;
+    }
+    if (mode === "join" && !inviteCode.trim()) {
       setError("Enter the invite code.");
       return;
     }
+
     setBusy(true);
     try {
-      await updateServerUrl(serverUrlInput.trim());
-      if (mode === "login") await login(username.trim(), password);
-      else await register(username.trim(), password, inviteCode.trim());
+      let result;
+      if (mode === "login") result = await login(vaultPassphrase);
+      else if (mode === "create") result = await registerNewHousehold(vaultPassphrase);
+      else result = await joinHousehold(inviteCode.trim(), vaultPassphrase);
+
+      if (result === false) {
+        // Google sign-in sheet was cancelled — not an error, just stop.
+        return;
+      }
     } catch (err) {
       setError(err.message);
     } finally {
@@ -60,44 +67,32 @@ export default function LoginScreen() {
         <Text style={styles.title}>Budgets</Text>
         <Text style={styles.subtitle}>Credit card spend, categorized and budgeted.</Text>
 
-        <Text style={styles.label}>Server URL</Text>
-        <TextInput
-          style={styles.input}
-          value={serverUrlInput}
-          onChangeText={setServerUrlInput}
-          placeholder="https://script.google.com/macros/s/.../exec"
-          autoCapitalize="none"
-          autoCorrect={false}
-          keyboardType="url"
-        />
-
-        <Text style={styles.label}>Username</Text>
-        <TextInput
-          style={styles.input}
-          value={username}
-          onChangeText={setUsername}
-          placeholder="username"
-          autoCapitalize="none"
-          autoCorrect={false}
-        />
-
-        <Text style={styles.label}>Password</Text>
-        <View style={styles.passwordRow}>
-          <TextInput
-            style={[styles.input, styles.passwordInput]}
-            value={password}
-            onChangeText={setPassword}
-            placeholder="••••••••"
-            secureTextEntry={!showPassword}
-            autoCapitalize="none"
-            autoCorrect={false}
-          />
-          <TouchableOpacity style={styles.showButton} onPress={() => setShowPassword((v) => !v)}>
-            <Text style={styles.showButtonText}>{showPassword ? "Hide" : "Show"}</Text>
+        <View style={styles.modeRow}>
+          <TouchableOpacity
+            style={[styles.modeButton, mode === "login" && styles.modeButtonActive]}
+            onPress={() => setMode("login")}
+          >
+            <Text style={[styles.modeButtonText, mode === "login" && styles.modeButtonTextActive]}>Log In</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeButton, mode === "create" && styles.modeButtonActive]}
+            onPress={() => setMode("create")}
+          >
+            <Text style={[styles.modeButtonText, mode === "create" && styles.modeButtonTextActive]}>
+              New household
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.modeButton, mode === "join" && styles.modeButtonActive]}
+            onPress={() => setMode("join")}
+          >
+            <Text style={[styles.modeButtonText, mode === "join" && styles.modeButtonTextActive]}>
+              Join with invite
+            </Text>
           </TouchableOpacity>
         </View>
 
-        {mode === "register" ? (
+        {mode === "join" ? (
           <>
             <Text style={styles.label}>Invite Code</Text>
             <TextInput
@@ -111,30 +106,50 @@ export default function LoginScreen() {
           </>
         ) : null}
 
-        {status ? <Text style={styles.status}>{status}</Text> : null}
+        <Text style={styles.label}>Vault Passphrase</Text>
+        <Text style={styles.helpText}>
+          This is separate from your Google password — it's the only thing that can unlock your
+          household's data, and we never send it anywhere.
+          {mode === "create" ? " You'll also get a one-time recovery code after this — save it somewhere safe." : ""}
+        </Text>
+        <View style={styles.passwordRow}>
+          <TextInput
+            style={[styles.input, styles.passwordInput]}
+            value={vaultPassphrase}
+            onChangeText={setVaultPassphrase}
+            placeholder="••••••••••"
+            secureTextEntry={!showPassphrase}
+            autoCapitalize="none"
+            autoCorrect={false}
+          />
+          <TouchableOpacity style={styles.showButton} onPress={() => setShowPassphrase((v) => !v)}>
+            <Text style={styles.showButtonText}>{showPassphrase ? "Hide" : "Show"}</Text>
+          </TouchableOpacity>
+        </View>
+
+        {mode === "create" ? (
+          <>
+            <Text style={styles.label}>Confirm Passphrase</Text>
+            <TextInput
+              style={styles.input}
+              value={confirmPassphrase}
+              onChangeText={setConfirmPassphrase}
+              placeholder="••••••••••"
+              secureTextEntry={!showPassphrase}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+          </>
+        ) : null}
+
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
         <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={busy}>
           <Text style={styles.buttonText}>
-            {busy ? "Please wait…" : mode === "login" ? "Log In" : "Create Account"}
+            {busy ? "Please wait…" : "Continue with Google"}
           </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.linkButton}
-          onPress={() => setMode(mode === "login" ? "register" : "login")}
-        >
-          <Text style={styles.linkText}>
-            {mode === "login" ? "New here? Create an account" : "Already have an account? Log in"}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.linkButton} onPress={() => setLogsVisible(true)}>
-          <Text style={styles.diagnosticsText}>View recent errors</Text>
         </TouchableOpacity>
       </ScrollView>
-
-      <DebugLogsModal visible={logsVisible} onClose={() => setLogsVisible(false)} />
     </KeyboardAvoidingView>
   );
 }
@@ -143,8 +158,21 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   scroll: { flexGrow: 1, justifyContent: "center", padding: 24 },
   title: { fontSize: 32, fontWeight: "700", textAlign: "center" },
-  subtitle: { fontSize: 14, color: "#666", textAlign: "center", marginBottom: 32 },
+  subtitle: { fontSize: 14, color: "#666", textAlign: "center", marginBottom: 28 },
+  modeRow: { flexDirection: "row", gap: 8, marginBottom: 20 },
+  modeButton: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 8,
+    paddingVertical: 10,
+    alignItems: "center",
+  },
+  modeButtonActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
+  modeButtonText: { color: "#333", fontWeight: "600", fontSize: 13 },
+  modeButtonTextActive: { color: "#fff" },
   label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 6, marginTop: 14 },
+  helpText: { fontSize: 12, color: "#888", marginBottom: 8, lineHeight: 16 },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -157,8 +185,7 @@ const styles = StyleSheet.create({
   passwordInput: { flex: 1 },
   showButton: { paddingHorizontal: 10, paddingVertical: 10 },
   showButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
-  status: { color: "#888", marginTop: 12, textAlign: "center", fontSize: 13 },
-  error: { color: "#c0392b", marginTop: 12, textAlign: "center" },
+  error: { color: "#c0392b", marginTop: 16, textAlign: "center" },
   button: {
     backgroundColor: "#1a1a1a",
     borderRadius: 8,
@@ -167,7 +194,4 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-  linkButton: { marginTop: 16, alignItems: "center" },
-  linkText: { color: "#1a6ed8", fontSize: 14 },
-  diagnosticsText: { color: "#999", fontSize: 12 },
 });
