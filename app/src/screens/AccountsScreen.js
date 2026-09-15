@@ -11,6 +11,7 @@ import {
   View,
 } from "react-native";
 import { useAccounts, useCreateAccount, useDeleteAccount } from "../data/queries";
+import CsvImportModal from "../components/CsvImportModal";
 
 const ACCOUNT_TYPES = ["credit", "checking", "savings"];
 
@@ -23,6 +24,7 @@ export default function AccountsScreen() {
   const [institution, setInstitution] = useState("");
   const [type, setType] = useState("credit"); // primary spending source per PRD §1
   const [deletingId, setDeletingId] = useState(null);
+  const [importAccountId, setImportAccountId] = useState(null);
 
   async function handleAddAccount() {
     if (!name.trim()) {
@@ -92,10 +94,20 @@ export default function AccountsScreen() {
                 </View>
               </View>
               {item.institution ? <Text style={styles.cardSubtitle}>{item.institution}</Text> : null}
+              <TouchableOpacity style={styles.importButton} onPress={() => setImportAccountId(item.id)}>
+                <Text style={styles.importButtonText}>Import CSV</Text>
+              </TouchableOpacity>
             </View>
           )}
         />
       )}
+
+      <CsvImportModal
+        visible={!!importAccountId}
+        accountId={importAccountId}
+        onClose={() => setImportAccountId(null)}
+        onImported={() => setImportAccountId(null)}
+      />
 
       {showForm ? (
         <View style={styles.form}>
@@ -161,6 +173,15 @@ const styles = StyleSheet.create({
   cardTitle: { fontSize: 17, fontWeight: "600" },
   cardSubtitle: { color: "#888", marginTop: 2 },
   deleteText: { color: "#c0392b", fontSize: 13, fontWeight: "600" },
+  importButton: {
+    marginTop: 12,
+    borderWidth: 1,
+    borderColor: "#1a6ed8",
+    borderRadius: 8,
+    paddingVertical: 8,
+    alignItems: "center",
+  },
+  importButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
   loadingBox: { alignItems: "center", paddingVertical: 40, gap: 8 },
   loadingText: { color: "#888", fontSize: 13 },
   badge: {
