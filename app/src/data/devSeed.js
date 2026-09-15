@@ -108,7 +108,9 @@ export async function seedSeptemberDemoData(householdId) {
   }
 
   for (const [name, amount] of Object.entries(SEPTEMBER_BUDGETS)) {
-    await repo.setBudget(householdId, categoryIdByName[name], SEPTEMBER, amount);
+    // A budget is always a positive allowance — the sheet's own sign
+    // convention (some rows negative) doesn't carry over here.
+    await repo.setBudget(householdId, categoryIdByName[name], SEPTEMBER, Math.abs(amount));
   }
 
   for (const tx of SEPTEMBER_TRANSACTIONS) {
