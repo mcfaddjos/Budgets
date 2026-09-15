@@ -478,6 +478,15 @@ service). If §10b's caching isn't enough on its own, the ping (or
 Render's ~$7/mo paid tier, which removes spin-down entirely) is still the
 fallback.
 
+**Dev/production branch split (decision, 2026-09-15)**: a Neon **branch**
+called `dev` (not a separate project — branches are free, copy-on-write
+clones with their own connection string) is what local development,
+manual device testing, and the Jest suite all point at via
+`backend/.env`. The original branch is reserved as the eventual
+production database, staying empty until real household data exists —
+avoids mixing throwaway test households/transactions with real ones from
+day one, cheap to set up now versus untangling later.
+
 ## 15. Open Questions
 
 - Which card issuers need to be supported first (determines CSV format variety)?
