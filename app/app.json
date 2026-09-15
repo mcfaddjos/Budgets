@@ -28,7 +28,8 @@
     },
     "owner": "joe.jmcf",
     "plugins": [
-      "react-native-libsodium"
+      "react-native-libsodium",
+      "@react-native-google-signin/google-signin"
     ]
   }
 }

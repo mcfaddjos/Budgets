@@ -465,18 +465,18 @@ server now only ever stores/relays ciphertext, going beyond the original
 decision — there's no more "Apps Script access setting" to fix once the
 backend isn't Apps Script.
 
-**Cold-start handling (decision, 2026-09-15)**: Neon's free-tier compute
+**Cold-start handling (revised, 2026-09-15)**: Neon's free-tier compute
 scales to zero after 5 min idle but wakes in under a second — not a
 concern. Render's free web service spins down after 15 min idle and takes
-~1 minute to wake — mitigated with an external cron ping (e.g.
-cron-job.org hitting a `/health` endpoint every 14 minutes) to keep it
-warm, plus the client-side cache-first UX in §10b so even a cold hit is
-mostly invisible to the user. Render's free tier gives 750
-instance-hours/workspace/month; keeping one service pinged awake 24/7 uses
-nearly all of that budget, leaving no room for a second free service in
-the same workspace — acceptable since this is the only service planned. If
-guaranteed always-on uptime is wanted later, Render's cheapest paid tier
-(~$7/mo) removes spin-down entirely without any code change.
+~1 minute to wake. Originally planned to mask this with an external cron
+ping (e.g. cron-job.org hitting `/health` every 14 minutes) — **deferred**
+in favor of shipping the client-side cache-first UX (§10b) first and
+seeing whether that alone makes cold starts unnoticeable in practice
+before adding the ping's own cost (burns nearly the entire 750
+instance-hour/month free-tier budget, leaving no room for a second free
+service). If §10b's caching isn't enough on its own, the ping (or
+Render's ~$7/mo paid tier, which removes spin-down entirely) is still the
+fallback.
 
 ## 15. Open Questions
 

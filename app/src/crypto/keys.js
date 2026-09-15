@@ -24,8 +24,10 @@ async function deriveVaultKey(passphrase, salt) {
 /**
  * Run once, at signup: generates this user's box keypair and encrypts the
  * private key with a key derived from their chosen vault passphrase.
- * Everything returned here except `passphrase` itself is safe to send to
- * the server — it's ciphertext, a salt, and a public key.
+ * Everything in the returned `forServer` object is safe to send to the
+ * server — it's ciphertext, a salt, and a public key. `privateKey` is not:
+ * it's the caller's job to hold that only in memory (session.js), never
+ * transmit or persist it.
  */
 export async function createUserKeyMaterial(passphrase) {
   await readySodium();
@@ -36,10 +38,13 @@ export async function createUserKeyMaterial(passphrase) {
   const encryptedPrivateKey = sodium.crypto_secretbox_easy(privateKey, privateKeyNonce, vaultKey);
 
   return {
-    publicKey: toBase64(publicKey),
-    encryptedPrivateKey: toBase64(encryptedPrivateKey),
-    privateKeyNonce: toBase64(privateKeyNonce),
-    vaultKdfSalt: toBase64(vaultKdfSalt),
+    privateKey,
+    forServer: {
+      publicKey: toBase64(publicKey),
+      encryptedPrivateKey: toBase64(encryptedPrivateKey),
+      privateKeyNonce: toBase64(privateKeyNonce),
+      vaultKdfSalt: toBase64(vaultKdfSalt),
+    },
   };
 }
 
