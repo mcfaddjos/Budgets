@@ -45,18 +45,28 @@ model Household {
   budgets       Budget[]
 }
 
-// Auth + key-material identity for a user. passwordHash is a normal login
-// verifier (argon2/bcrypt) and is unrelated to the encryption key material
-// below — never derive the DEK-wrapping key from the same raw value the
-// server checks at login without a KDF in between (see §10a: the server
-// must never be able to reconstruct decryption keys from what it stores).
+// Identity + key-material for a user, split deliberately into two
+// unrelated secrets (decision, 2026-09-15, see PRD §10a):
+//
+//   1. Google Sign-In authenticates *who you are* to the server (verified
+//      via Google's own ID-token signature — no local password verifier
+//      needed at all for login).
+//   2. A separate **vault passphrase**, entered only in the app and never
+//      sent to the server in any form, derives (Argon2id, via
+//      vaultKdfSalt) the key that unlocks encryptedPrivateKey below.
+//
+// These must stay independent: if Google (or a compromised Google
+// session) were enough on its own to unlock the vault, the "developer
+// cannot access user data" property would actually mean "neither can the
+// developer NOR anyone who controls the Google account" — a weaker
+// guarantee than intended. The vault passphrase is what keeps decryption
+// possible only for someone who knows a secret the server never sees.
 model User {
-  id             String    @id @default(uuid())
-  username       String    @unique
-  passwordHash   String
-  failedAttempts Int       @default(0)
-  lockedUntil    DateTime?
-  createdAt      DateTime  @default(now())
+  id        String   @id @default(uuid())
+  googleId  String   @unique // Google's stable "sub" claim
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
 
   // Public-key identity (libsodium crypto_box keypair), used so other
   // household members can wrap the household DEK to this user without
@@ -64,12 +74,13 @@ model User {
   publicKey String // base64, safe to be plaintext — this is the public half
 
   // The matching private key, encrypted client-side with a key derived
-  // (Argon2id, using kdfSalt) from the user's password. The server only
-  // ever stores/relays this ciphertext.
+  // from the user's vault passphrase (never their Google credential).
+  // The server only ever stores/relays this ciphertext.
   encryptedPrivateKey String // base64 ciphertext
   privateKeyNonce     String // base64, secretbox nonce for the above
-  kdfSalt             String // base64, Argon2id salt for re-deriving the
-  //                            password-wrapping key on a new device/login
+  vaultKdfSalt        String // base64, Argon2id salt for re-deriving the
+  //                            vault-passphrase-wrapping key on a new
+  //                            device/login
 
   memberships         HouseholdMember[]
   sessions            Session[]

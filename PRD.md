@@ -135,9 +135,9 @@ The PoC's job is to prove the core loop end-to-end on a real phone: **log
 in → import a credit card statement → see categorized transactions → see
 spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 
-- **Platform:** React Native app via Expo, runnable on both iOS and Android. Standalone Android builds now ship via `eas build` (see §14); Expo Go still used for fast iteration during development.
+- **Platform:** React Native app via Expo, runnable on both iOS and Android. Standalone Android builds now ship via `eas build` (see §14); Expo Go used for fast iteration during development **until the E2EE work lands (§10a)** — `react-native-libsodium` is a native module, so iteration moves to a custom dev client (`expo-dev-client`) at that point.
 - **Backend:** currently a Google Apps Script Web App bound to a Google Sheet acting as the database (see §14 for why, and §14a for why this is being migrated off). Each user's accounts/transactions/budgets are scoped to their login server-side today — moving to household-scoped per §5a.
-- **Auth:** simple username + password login (hashed passwords, session token) gated by a shared invite code. Not production-grade auth (no OAuth/SSO, no password reset, no session expiry) — see §10 for the concrete gaps found in review.
+- **Auth:** simple username + password login (hashed passwords, session token) gated by a shared invite code. Not production-grade auth (no OAuth/SSO, no password reset, no session expiry) — see §10 for the concrete gaps found in review. **Being replaced (§10a, decision 2026-09-15)** by Google Sign-In for login identity plus a separate vault passphrase for encryption, as part of the backend migration.
 - **Import format:** CSV only for the PoC (most credit card issuers export CSV directly; OFX/QFX and PDF are deferred — see Non-Goals for full v1).
 - **Categorization:** keyword-based default rules + manual override; per-user learned rules (moving to household-shared rules per §5a).
 - **Budgeting:** one budget amount per category per month; actual-vs-budget view.
@@ -235,7 +235,7 @@ the budget quietly.
 ## 9. Data Model (high level, post §5a/§5b household migration)
 
 - **Household**: id, name (optional), createdAt.
-- **User**: id, username, password_hash — **no `householdId` column** (see §5b: membership is a relationship, not a field on User, so one user can belong to more than one household without a schema change).
+- **User**: id, googleId, email, name, plus key-material fields for §10a (publicKey, encryptedPrivateKey, vaultKdfSalt, etc.) — **no `householdId` column** (see §5b: membership is a relationship, not a field on User, so one user can belong to more than one household without a schema change). Authoritative field list lives in `backend/prisma/schema.prisma`, kept ahead of this high-level summary.
 - **HouseholdMember**: householdId, userId, role (`owner` | `member`), joinedAt — the join table that actually links users to households.
 - **Invite**: id, householdId, code, createdByUserId, createdAt, expiresAt (nullable), usedByUserId (nullable) — household-scoped, replacing today's single global `INVITE_CODE`.
 - **Account**: id, householdId, name, type (credit/checking/savings), institution.
@@ -252,7 +252,7 @@ of `householdId` and has no `createdByUserId` — see the actual schema in
 ## 10. Non-Functional Requirements
 
 - **Security & privacy:** statement data is sensitive financial data. Concrete gaps found in this session's review, to close as part of the backend migration (§14a), not left as "someday":
-  - Password hashing is a hand-rolled iterated-HMAC-SHA256 (Apps Script has no `bcrypt`/`scrypt`/`argon2`) — real KDF (`bcrypt` or `argon2`) once off Apps Script.
+  - Password hashing is a hand-rolled iterated-HMAC-SHA256 (Apps Script has no `bcrypt`/`scrypt`/`argon2`) — **superseded**: login moves to Google Sign-In (§10a), so there's no local password to hash at all; a separate vault passphrase still uses a real KDF (Argon2id) client-side for the encryption key, never sent to the server to hash.
   - Session tokens never expire and there's no logout-side invalidation — needs a TTL and a real logout action.
   - Data is **not** actually encrypted at rest today (a Google Sheet is not that) despite this being a stated requirement — a managed Postgres (most providers encrypt at rest by default) closes this as a side effect of the backend migration, not a separate task.
   - No general rate limiting beyond the login-lockout counter; registration itself has no throttling beyond the invite code.
@@ -271,6 +271,18 @@ production database access. This goes beyond "encrypted at rest" (any
 managed Postgres provider gives that for free) to encryption the *server
 itself* cannot reverse.
 
+- **Login identity and the encryption secret are deliberately two different
+  things (decision, 2026-09-15)**: **Google Sign-In** authenticates who a
+  user is (verified server-side via Google's own ID-token signature — no
+  local password verifier needed at all), while a separate **vault
+  passphrase**, entered only in the app and never transmitted to the
+  server in any form, is what derives the key that unlocks a user's
+  private key below. If Google alone could unlock the vault, "the
+  developer can't read your data" would quietly become "neither can the
+  developer, unless they also control your Google account" — a weaker
+  guarantee. Keeping the two independent means only someone who knows the
+  vault passphrase can ever decrypt anything, Google account access
+  notwithstanding.
 - **Household Data Encryption Key (DEK)**: one symmetric key per household,
   generated client-side at household creation, encrypts all sensitive
   fields (transaction amount/description, category names, budget amounts,
@@ -280,8 +292,8 @@ itself* cannot reverse.
   content.
 - **Key sharing across members**: each user generates a public/private
   keypair on first signup (private key encrypted with a key derived from
-  their password, stored as an opaque blob server-side so it can follow
-  them to a new device on login). Inviting a member (§5b) means an
+  their vault passphrase, stored as an opaque blob server-side so it can
+  follow them to a new device on login). Inviting a member (§5b) means an
   existing member decrypts the household DEK locally and re-encrypts
   ("wraps") it to the new member's public key (libsodium sealed boxes) —
   the server only ever relays the wrapped blob, never the DEK itself.
@@ -295,19 +307,27 @@ itself* cannot reverse.
 - **Account recovery (decision, 2026-09-15)**: a **recovery code** is
   generated at signup — a second wrapped copy of the household DEK the
   user is responsible for storing themselves (password manager, printed,
-  etc). Losing both the password and the recovery code means that
+  etc). Losing both the vault passphrase and the recovery code means that
   member's access is unrecoverable (other members keep theirs, and the
   household's data itself isn't lost) — a deliberate tradeoff for a
   self-service recovery flow that doesn't depend on another member being
-  available.
+  available. Note Google account recovery is irrelevant here — regaining
+  Google access doesn't help if the vault passphrase itself is lost, by
+  design.
 - **Open question, not yet resolved**: removing a household member (once
   that flow exists) doesn't automatically revoke their ability to decrypt
   data they already synced locally, and doesn't rotate the household DEK
   — a real gap for later, not blocking for a 2-person trusted household
   today. Tracked in §15.
-- **Library**: libsodium (`react-native-libsodium` on the Expo app,
-  `libsodium-wrappers` on the Express server for any server-side crypto
-  needs) rather than hand-rolled AES/KDF code.
+- **Library**: `react-native-libsodium` (native module) on the Expo app
+  for all key generation/wrapping/encryption — decided 2026-09-15 over a
+  pure-JS alternative for better performance and to match libsodium's
+  well-audited sealed-box/secretbox/Argon2id primitives directly, at the
+  cost of requiring a custom dev client (`expo-dev-client` + an `eas
+  build` dev profile) for iteration instead of Expo Go going forward. The
+  server does none of this — it never holds key material, so it only
+  needs `google-auth-library` to verify Google ID tokens, not a crypto
+  library.
 
 ### 10b. Client-side caching & prefetch (decision, 2026-09-15)
 
