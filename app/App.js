@@ -14,6 +14,7 @@ import BudgetsScreen from "./src/screens/BudgetsScreen";
 import HouseholdScreen from "./src/screens/HouseholdScreen";
 import TabBar from "./src/components/TabBar";
 import RecoveryCodeModal from "./src/components/RecoveryCodeModal";
+import VersionFooter from "./src/components/VersionFooter";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -80,6 +81,9 @@ export default function App() {
         <AuthProvider>
           <StatusBar barStyle="dark-content" />
           <Root />
+          {/* Rendered once here, absolutely positioned, so it shows on every
+              screen (auth screens included) without threading it through each one. */}
+          <VersionFooter />
         </AuthProvider>
       </PersistQueryClientProvider>
     </SafeAreaProvider>

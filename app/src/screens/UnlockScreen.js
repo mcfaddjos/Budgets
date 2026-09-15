@@ -13,7 +13,8 @@ const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
 export default function UnlockScreen() {
   const { user, unlockVault, logout } = useAuth();
   const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
-  const [showPassphrase, setShowPassphrase] = useState(false);
+  // See LoginScreen.js's note on why this defaults to visible in dev.
+  const [showPassphrase, setShowPassphrase] = useState(__DEV__);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 

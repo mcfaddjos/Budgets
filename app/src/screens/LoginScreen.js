@@ -24,7 +24,12 @@ export default function LoginScreen() {
   const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [confirmPassphrase, setConfirmPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [inviteCode, setInviteCode] = useState("");
-  const [showPassphrase, setShowPassphrase] = useState(false);
+  // Defaults to visible in dev — secureTextEntry's masking isn't rendering
+  // dots reliably on this device/RN combo, and showing plaintext by
+  // default is a reasonable dev-only tradeoff to actually see what's
+  // typed while that gets tracked down properly (__DEV__ is always false
+  // in a release build, so production still defaults to masked).
+  const [showPassphrase, setShowPassphrase] = useState(__DEV__);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
