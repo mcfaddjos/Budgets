@@ -98,7 +98,10 @@ export default function LoginScreen() {
             <TextInput
               style={styles.input}
               value={inviteCode}
-              onChangeText={setInviteCode}
+              onChangeText={(text) => {
+                setInviteCode(text);
+                setError(null);
+              }}
               placeholder="Ask whoever set this up"
               autoCapitalize="none"
               autoCorrect={false}
@@ -116,11 +119,17 @@ export default function LoginScreen() {
           <TextInput
             style={[styles.input, styles.passwordInput]}
             value={vaultPassphrase}
-            onChangeText={setVaultPassphrase}
+            onChangeText={(text) => {
+              setVaultPassphrase(text);
+              setError(null);
+            }}
             placeholder="••••••••••"
             secureTextEntry={!showPassphrase}
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="off"
+            importantForAutofill="no"
+            textContentType="none"
           />
           <TouchableOpacity style={styles.showButton} onPress={() => setShowPassphrase((v) => !v)}>
             <Text style={styles.showButtonText}>{showPassphrase ? "Hide" : "Show"}</Text>
@@ -133,11 +142,17 @@ export default function LoginScreen() {
             <TextInput
               style={styles.input}
               value={confirmPassphrase}
-              onChangeText={setConfirmPassphrase}
+              onChangeText={(text) => {
+                setConfirmPassphrase(text);
+                setError(null);
+              }}
               placeholder="••••••••••"
               secureTextEntry={!showPassphrase}
               autoCapitalize="none"
               autoCorrect={false}
+              autoComplete="off"
+              importantForAutofill="no"
+              textContentType="none"
             />
           </>
         ) : null}

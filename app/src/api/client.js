@@ -171,6 +171,10 @@ async function call(action, payload) {
       }
       if (!err.retryable || attempt === MAX_ATTEMPTS || NON_IDEMPOTENT_ACTIONS.has(action)) {
         emitStatus(null);
+        // Surfaced to Logcat (tag ReactNativeJS) so a failure can be
+        // pulled via adb without the user having to copy/paste it —
+        // errors were previously only ever shown in the in-app UI.
+        console.error(`[api] ${action} failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, err.message);
         throw err;
       }
       await sleep(300 * attempt);

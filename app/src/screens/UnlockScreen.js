@@ -36,11 +36,17 @@ export default function UnlockScreen() {
           <TextInput
             style={[styles.input, styles.passwordInput]}
             value={vaultPassphrase}
-            onChangeText={setVaultPassphrase}
+            onChangeText={(text) => {
+              setVaultPassphrase(text);
+              setError(null);
+            }}
             placeholder="Vault passphrase"
             secureTextEntry={!showPassphrase}
             autoCapitalize="none"
             autoCorrect={false}
+            autoComplete="off"
+            importantForAutofill="no"
+            textContentType="none"
             autoFocus
           />
           <TouchableOpacity style={styles.showButton} onPress={() => setShowPassphrase((v) => !v)}>

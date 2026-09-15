@@ -21,15 +21,23 @@ function ensureConfigured() {
 
 /** Returns a Google ID token, or null if the user cancelled the sign-in sheet. */
 export async function signInWithGoogle() {
-  ensureConfigured();
-  await GoogleSignin.hasPlayServices();
-  const response = await GoogleSignin.signIn();
+  try {
+    ensureConfigured();
+    await GoogleSignin.hasPlayServices();
+    const response = await GoogleSignin.signIn();
 
-  if (isCancelledResponse(response)) return null;
-  if (!isSuccessResponse(response) || !response.data.idToken) {
-    throw new Error("Google sign-in did not return an ID token");
+    if (isCancelledResponse(response)) return null;
+    if (!isSuccessResponse(response) || !response.data.idToken) {
+      throw new Error("Google sign-in did not return an ID token");
+    }
+    return response.data.idToken;
+  } catch (err) {
+    // Surfaced to Logcat (tag ReactNativeJS) — this is where native
+    // errors like DEVELOPER_ERROR (SHA-1/package mismatch) actually
+    // come from, so they need to be visible without the in-app UI.
+    console.error("[google-signin] failed:", err.code || "", err.message);
+    throw err;
   }
-  return response.data.idToken;
 }
 
 export async function signOutOfGoogle() {
