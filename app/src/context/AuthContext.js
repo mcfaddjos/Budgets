@@ -115,7 +115,17 @@ export function AuthProvider({ children }) {
     setUnlocked(true);
     applyIdentity({ ...result.user, ...forServer, memberships: [{ householdId: result.householdId, role: "OWNER", wrappedDek }] });
 
-    await seedDefaultCategories(dek);
+    // By this point React has already navigated away from whatever screen
+    // called this (unlocked/activeHouseholdId just flipped true), so a
+    // thrown error here can't reach that screen's own error UI — it would
+    // otherwise fail completely silently. Log explicitly and don't let a
+    // seeding failure undo an already-successful registration; the user
+    // can still add categories manually from the Budgets screen.
+    try {
+      await seedDefaultCategories(dek);
+    } catch (err) {
+      console.error("[registerNewHousehold] seedDefaultCategories failed:", err.message);
+    }
     setPendingRecoveryCode({ householdId: result.householdId, code: keys.recoveryKeyToDisplayString(recoveryKey) });
 
     return true;
