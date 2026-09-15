@@ -68,7 +68,8 @@ export default function HouseholdScreen() {
       await queryClient.invalidateQueries();
       Alert.alert(
         "Demo data seeded",
-        `${result.categoriesCreated} categories, ${result.budgetsSet} budgets, ${result.transactionsCreated} transactions.\n\n${result.skipped}`
+        `${result.categoriesCreated} categories, ${result.budgetsSet} budgets, ${result.transactionsCreated} transactions.` +
+          (result.transactionsSkipped ? `\n\n${result.transactionsSkipped}` : "")
       );
     } catch (err) {
       Alert.alert("Couldn't seed demo data", err.message);

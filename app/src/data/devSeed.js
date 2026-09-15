@@ -109,8 +109,25 @@ export async function seedSeptemberDemoData(householdId) {
 
   for (const [name, amount] of Object.entries(SEPTEMBER_BUDGETS)) {
     // A budget is always a positive allowance — the sheet's own sign
-    // convention (some rows negative) doesn't carry over here.
+    // convention (some rows negative) doesn't carry over here. setBudget
+    // is an upsert (one row per category+month), so re-running this is
+    // always safe and just corrects the amount in place.
     await repo.setBudget(householdId, categoryIdByName[name], SEPTEMBER, Math.abs(amount));
+  }
+
+  // Unlike categories/budgets, manual transactions have no dedup
+  // check (by design — two genuinely separate $5 coffees on the same day
+  // are both real, see backend/src/handlers/transactions.js) — so
+  // tapping this button twice would silently double every transaction.
+  // Guard against that explicitly instead.
+  const existingTransactions = await repo.listTransactions(householdId, { month: SEPTEMBER });
+  if (existingTransactions.length > 0) {
+    return {
+      categoriesCreated: SEPTEMBER_CATEGORY_NAMES.length,
+      budgetsSet: Object.keys(SEPTEMBER_BUDGETS).length,
+      transactionsCreated: 0,
+      transactionsSkipped: `${existingTransactions.length} September transactions already exist — not re-seeding to avoid duplicates. Delete them first (long-press each in Transactions) if you want a clean re-seed.`,
+    };
   }
 
   for (const tx of SEPTEMBER_TRANSACTIONS) {
