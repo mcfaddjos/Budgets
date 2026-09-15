@@ -22,10 +22,33 @@
     "start": "expo start",
     "android": "expo start --android",
     "ios": "expo start --ios",
-    "web": "expo start --web"
+    "web": "expo start --web",
+    "test": "jest"
   },
   "private": true,
   "allowScripts": {
     "react-native-libsodium@1.7.0": true
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.29.7",
+    "jest": "^30.5.1",
+    "libsodium-wrappers-sumo": "^0.8.4"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/*.test.js"
+    ],
+    "moduleNameMapper": {
+      "^react-native-libsodium$": "libsodium-wrappers-sumo"
+    },
+    "transform": {
+      "^.+\\.jsx?$": [
+        "babel-jest",
+        {
+          "configFile": "./babel.jest.config.js"
+        }
+      ]
+    }
   }
 }
