@@ -134,7 +134,12 @@ export async function seedSeptemberDemoData(householdId) {
     await repo.createManualTransaction(householdId, {
       accountId,
       categoryId: categoryIdByName[tx.category],
-      amount: tx.amount,
+      // This app's convention is the opposite of the source sheet's:
+      // positive = expense, negative = credit/refund (confirmed by
+      // TransactionsScreen.js coloring negative amounts green as
+      // "credit"). The sheet uses negative for money spent, so every
+      // entry here needs the sign flipped, same as the budget fix above.
+      amount: Math.abs(tx.amount),
       description: tx.description,
       fallbackDescription: tx.category,
       date: tx.date,
