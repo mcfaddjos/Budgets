@@ -5,6 +5,16 @@
 // backend script: category/transaction content is only ever encrypted
 // client-side with the household DEK (§10a), which never leaves the
 // device, so seeding has to happen through the app's own live session.
+//
+// Sourced from the real "Spend Less - Sept 2026.csv" export (an earlier
+// attempt to parse a pasted-into-chat version of this same sheet was
+// ambiguous — whitespace collapsed several blank cells together — the
+// real CSV resolves every cell cleanly). The sheet's structure: row 1 is
+// the September budget amount per category; each later row is one or
+// more same-row transactions across different categories, with note
+// sub-columns paired to specific categories (e.g. "Flowers" paired with
+// a Shopping amount) plus one shared note column covering Outside
+// Fud-through-Wellness.
 import * as repo from "./repo";
 
 const SEPTEMBER = "2026-09";
@@ -23,10 +33,8 @@ export const SEPTEMBER_CATEGORY_NAMES = [
   "Car",
 ];
 
-// Only the categories where the source spreadsheet's budget row was
-// unambiguous once collapsed blank cells were accounted for — Wellness/
-// Shopping/Cleaning/Car and a couple of middle rows were left out
-// deliberately rather than guessed at (see conversation).
+// Row 1 of the sheet — one amount per category, unambiguous now that the
+// real CSV shows every column.
 const SEPTEMBER_BUDGETS = {
   "Home Fud": 542,
   "Outside Fud": 330,
@@ -35,16 +43,49 @@ const SEPTEMBER_BUDGETS = {
   Pets: 200,
   Bills: 0,
   Health: 300,
+  Wellness: -1430,
+  Shopping: 467,
+  Cleaning: -145,
+  Car: 205,
 };
 
-// Only the transactions that were unambiguous in the source data (a
-// single amount + description per row, no competing column values).
-// "Co-op groceries" entries had no explicit date in the source, so
-// they're spread arbitrarily across the month; the "Smith brothers"
-// entries use the dates already embedded in their own description.
+// Rows without an explicit date (most of them) get an approximate,
+// roughly-chronological placeholder date within September — the sheet
+// doesn't record one. The two "Smith brothers" entries use the dates
+// already embedded in their own descriptions.
 const SEPTEMBER_TRANSACTIONS = [
-  { category: "Home Fud", amount: -127, description: "Co-op groceries", date: "2026-09-02" },
-  { category: "Home Fud", amount: -134, description: "Co-op groceries", date: "2026-09-09" },
+  // Row 2 of the sheet (~week 1)
+  { category: "Home Fud", amount: -70, date: "2026-09-03" },
+  { category: "Outside Fud", amount: -60, date: "2026-09-03" },
+  { category: "Travel", amount: -15, date: "2026-09-03" },
+  { category: "Partying", amount: -110, date: "2026-09-03" },
+  { category: "Bills", amount: -3300, date: "2026-09-03" },
+  { category: "Wellness", amount: -120, date: "2026-09-03" },
+  { category: "Shopping", amount: -20, description: "Flowers", date: "2026-09-03" },
+  { category: "Cleaning", amount: -105, date: "2026-09-03" },
+  { category: "Car", amount: -65, date: "2026-09-03" },
+
+  // Row 3 of the sheet (~week 2)
+  { category: "Home Fud", amount: -11, date: "2026-09-10" },
+  { category: "Outside Fud", amount: -70, date: "2026-09-10" },
+  { category: "Partying", amount: -100, date: "2026-09-10" },
+  { category: "Wellness", amount: -840, description: "Gym membership", date: "2026-09-10" },
+  { category: "Shopping", amount: -13, description: "Gua sha", date: "2026-09-10" },
+  { category: "Cleaning", amount: -240, description: "trees", date: "2026-09-10" },
+  { category: "Car", amount: -730, date: "2026-09-10" },
+
+  // Row 4 of the sheet (~week 3)
+  { category: "Home Fud", amount: -14, date: "2026-09-17" },
+  { category: "Outside Fud", amount: -40, date: "2026-09-17" },
+  { category: "Partying", amount: -60, date: "2026-09-17" },
+  { category: "Wellness", amount: -840, description: "Gym membership", date: "2026-09-17" },
+
+  // Row 5 of the sheet
+  { category: "Home Fud", amount: -127, description: "Co-op groceries", date: "2026-09-06" },
+  { category: "Wellness", amount: -30, date: "2026-09-06" },
+
+  // Rows 6-8 of the sheet
+  { category: "Home Fud", amount: -134, description: "Co-op groceries", date: "2026-09-20" },
   { category: "Home Fud", amount: -48, description: "Smith brothers 9/4", date: "2026-09-04" },
   { category: "Home Fud", amount: -54, description: "Smith brothers 9/11", date: "2026-09-11" },
 ];
@@ -56,8 +97,12 @@ export async function seedSeptemberDemoData(householdId) {
   }
   const accountId = accounts[0].id;
 
+  const existingCategories = await repo.listCategories(householdId);
   const categoryIdByName = {};
+  for (const c of existingCategories) categoryIdByName[c.name] = c.id;
+
   for (const name of SEPTEMBER_CATEGORY_NAMES) {
+    if (categoryIdByName[name]) continue; // already seeded, don't duplicate on a re-run
     const created = await repo.createCategory(householdId, name);
     categoryIdByName[name] = created.id;
   }
@@ -72,6 +117,7 @@ export async function seedSeptemberDemoData(householdId) {
       categoryId: categoryIdByName[tx.category],
       amount: tx.amount,
       description: tx.description,
+      fallbackDescription: tx.category,
       date: tx.date,
     });
   }
@@ -80,7 +126,5 @@ export async function seedSeptemberDemoData(householdId) {
     categoriesCreated: SEPTEMBER_CATEGORY_NAMES.length,
     budgetsSet: Object.keys(SEPTEMBER_BUDGETS).length,
     transactionsCreated: SEPTEMBER_TRANSACTIONS.length,
-    skipped:
-      "Wellness/Shopping/Cleaning/Car budgets and two middle spreadsheet rows were left out — their column mapping was ambiguous, not guessed at.",
   };
 }
