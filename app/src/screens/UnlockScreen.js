@@ -7,9 +7,12 @@ import { useAuth } from "../context/AuthContext";
  * — the private key is only ever held in memory (§10a), so it's gone
  * after any app restart even though the login itself is still valid.
  */
+// See LoginScreen.js — __DEV__ is always false in a release build.
+const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
+
 export default function UnlockScreen() {
   const { user, unlockVault, logout } = useAuth();
-  const [vaultPassphrase, setVaultPassphrase] = useState("");
+  const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);

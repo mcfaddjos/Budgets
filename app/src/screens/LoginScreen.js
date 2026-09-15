@@ -11,13 +11,18 @@ import {
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
 
-const MIN_PASSPHRASE_LENGTH = 10;
+// __DEV__ is a React Native global — always false in a release/production
+// build, so this relaxed length + prefilled value can never ship. Purely
+// so re-testing the login flow repeatedly doesn't mean retyping a real
+// passphrase every time.
+const MIN_PASSPHRASE_LENGTH = __DEV__ ? 4 : 10;
+const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
 
 export default function LoginScreen() {
   const { login, registerNewHousehold, joinHousehold } = useAuth();
   const [mode, setMode] = useState("login"); // 'login' | 'create' | 'join'
-  const [vaultPassphrase, setVaultPassphrase] = useState("");
-  const [confirmPassphrase, setConfirmPassphrase] = useState("");
+  const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
+  const [confirmPassphrase, setConfirmPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [inviteCode, setInviteCode] = useState("");
   const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState(null);
