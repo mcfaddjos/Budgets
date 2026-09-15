@@ -12,7 +12,7 @@ import {
 } from "react-native";
 import { useAccounts, useCreateAccount, useDeleteAccount } from "../data/queries";
 
-const ACCOUNT_TYPES = ["checking", "savings"];
+const ACCOUNT_TYPES = ["credit", "checking", "savings"];
 
 export default function AccountsScreen() {
   const { data: accounts = [], isPending, isFetching, refetch } = useAccounts();
@@ -21,7 +21,7 @@ export default function AccountsScreen() {
   const [showForm, setShowForm] = useState(false);
   const [name, setName] = useState("");
   const [institution, setInstitution] = useState("");
-  const [type, setType] = useState("checking");
+  const [type, setType] = useState("credit"); // primary spending source per PRD §1
   const [deletingId, setDeletingId] = useState(null);
 
   async function handleAddAccount() {
@@ -33,7 +33,7 @@ export default function AccountsScreen() {
       await createAccount.mutateAsync({ name: name.trim(), type, institution: institution.trim() || null });
       setName("");
       setInstitution("");
-      setType("checking");
+      setType("credit");
       setShowForm(false);
     } catch (err) {
       Alert.alert("Couldn't add account", err.message);
