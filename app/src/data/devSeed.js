@@ -33,20 +33,24 @@ export const SEPTEMBER_CATEGORY_NAMES = [
   "Car",
 ];
 
-// Row 1 of the sheet — one amount per category, unambiguous now that the
-// real CSV shows every column.
+// From the authoritative "Spend Less - Master.csv" budget sheet (row 3),
+// not the September sheet's own row 1 — that row mixed budget-looking
+// numbers with what turned out to be leftover/ambiguous note artifacts
+// (e.g. a literal "Notes" placeholder sitting in a value position). The
+// master sheet's total (8400) matches the total budgeted figure already
+// seen in the app, confirming this is the right source.
 const SEPTEMBER_BUDGETS = {
-  "Home Fud": 542,
-  "Outside Fud": 330,
-  Travel: 485,
-  Partying: 230,
+  "Home Fud": 1000,
+  "Outside Fud": 500,
+  Travel: 500,
+  Partying: 500,
   Pets: 200,
-  Bills: 0,
+  Bills: 3300,
   Health: 300,
-  Wellness: -1430,
-  Shopping: 467,
-  Cleaning: -145,
-  Car: 205,
+  Wellness: 400,
+  Shopping: 500,
+  Cleaning: 200,
+  Car: 1000,
 };
 
 // Rows without an explicit date (most of them) get an approximate,
