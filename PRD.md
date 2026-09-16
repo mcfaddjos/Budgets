@@ -173,6 +173,12 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 - Auto-categorize on import using: (a) household-defined merchant/description rules, (b) a default keyword-based ruleset shipped with the app, (c) fallback to "Uncategorized."
 - Allow bulk re-categorization (select multiple transactions → assign category).
 - Learn from manual corrections by prompting "Always categorize [merchant] as [category]?" and saving as a rule.
+- **Split transactions (e.g. one grocery run: food vs. drinks) — raised 2026-09-16, under discussion, not designed yet.** Today a `Transaction` has exactly one `categoryId`; the ask is to let a single purchase span more than one category (part groceries, part alcohol, on one receipt) instead of forcing the whole amount into one bucket. Open questions:
+  - **Data model**: does a `Transaction` gain a set of line items (each its own category + amount, summing to the transaction total) for split rows specifically, or is a "split" actually two-or-more ordinary transaction rows tied together (parent/child, or a shared `splitGroupId`)? These differ in how dedup, CSV re-import, and the `reviewed` flag apply — a line-item model keeps one dedup key per real-world purchase; a multi-row model needs a new way to dedup the group as a whole.
+  - **Where a split gets created**: a CSV/statement line is one row with one amount, so a split can't be inferred from the source data — is it only ever a manual edit after import, or does the Add Transaction modal (manual entry) support entering a split directly too?
+  - **Interaction with category rules**: today's rule is one merchant → one category (§8.2 above). A merchant that sometimes splits (a grocery run with wine) and sometimes doesn't doesn't fit that cleanly — does a split simply opt out of rule-based auto-categorization and always require manual entry, or does a merchant need its own "usually splits this way" template?
+  - **Budget rollup**: each split portion should count toward its own category's actual spend in §8.3 (the natural reading) — needs to be explicit, since every existing actual-vs-budget query currently assumes one `categoryId` per transaction row.
+  - **Raised explicitly as a scale concern, not just a v1 design detail**: as the household/multi-household model (§5a/§5b) grows the number of households, each with its own custom category list, a split-entry UI needs to hold up once a household has accumulated many custom categories (a searchable/filterable picker, not a short fixed list) — and there's no shared default template to lean on for "typically splits like this" once two households' category sets don't resemble each other at all.
 
 ### 8.3 Budgeting
 - Allow setting a target budget amount per category per month. Each month starts from its own budget row (already the case in the data model — `Budget` is keyed by category + month), so a new month's transactions are automatically measured against that month's amount, not folded into a running total.
@@ -326,7 +332,7 @@ own polish pass, not a feature gap.
 ## 13. Milestones
 
 - **M0 — PoC (done):** Expo app + shared backend, login, CSV credit-card import, categorization, budget vs. actual — see §6.
-- **M1 — Import & Categorize (full):** OFX import, PDF import, dedup hardening, bulk re-categorization.
+- **M1 — Import & Categorize (full):** OFX import, PDF import, dedup hardening, bulk re-categorization. Split transactions (§8.2) is a candidate here too, pending the open data-model questions there.
 - **M2 — Budgeting:** per-category rollover option, seasonal budget templates (e.g. recurring Sept/Apr/Dec "Presents" bump), carry-forward of flat budget amounts, multi-account rollups. Deficit (negative) rollover and one-off custom budgets for large purchases (§8.3) are candidates for this milestone too, but need the open design questions there resolved first — not yet scoped.
 - **M3 — Reconciliation & Reporting:** flagging dashboard, monthly report archive, trend reports, exports, per-person breakdown.
 - **M4 — Backend migration (§14a):** off Apps Script/Sheets onto a real HTTP host + database, with the security hardening in §10 as part of the same move.
@@ -400,6 +406,7 @@ setting" to fix once the backend isn't Apps Script.
 ## 15. Open Questions
 
 - **Found 2026-09-16 — needs a decision, not just a fix**: `credit` was silently dropped as an account type on 2026-09-11 (see §9), leaving only checking/savings live, with no record of why. Was this an accidental drop while adding account delete in the same commit, or an actual (undocumented) decision to deprioritize credit cards? If the former, restore it; if the latter, §1/§3 need rewriting since "credit cards are the primary focus" is currently this PRD's headline framing.
+- **Split transactions (§8.2, raised 2026-09-16)**: line-items-on-one-row vs. linked multiple rows — needs deciding before any schema work, since it changes how dedup and budget rollup both work. Also needs a stance on whether split entry is manual-only or something the Add Transaction modal supports directly.
 - Which card issuers need to be supported first (determines CSV format variety)?
 - Rollover is wanted as a **per-category option**, not a global setting — still open: how does a category switch modes, and what happens to an already-rolled-over balance if that category's flat amount later changes?
 - **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
