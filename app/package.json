@@ -1,0 +1,59 @@
+{
+  "name": "app",
+  "version": "1.0.0",
+  "main": "index.js",
+  "dependencies": {
+    "@expo/metro-runtime": "~57.0.15",
+    "@react-native-async-storage/async-storage": "2.2.0",
+    "@react-native-google-signin/google-signin": "^16.1.5",
+    "@tanstack/query-async-storage-persister": "^5.102.8",
+    "@tanstack/react-query": "^5.102.8",
+    "@tanstack/react-query-persist-client": "^5.102.8",
+    "expo": "~57.0.21",
+    "expo-dev-client": "~57.0.19",
+    "expo-document-picker": "^57.0.1",
+    "expo-file-system": "~57.0.6",
+    "expo-status-bar": "~57.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "react-native": "0.86.3",
+    "react-native-libsodium": "^1.7.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-web": "^0.21.2"
+  },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "test": "jest",
+    "postinstall": "patch-package"
+  },
+  "private": true,
+  "allowScripts": {
+    "react-native-libsodium@1.7.0": true
+  },
+  "devDependencies": {
+    "@babel/preset-env": "^7.29.7",
+    "jest": "^30.5.1",
+    "libsodium-wrappers-sumo": "^0.8.4",
+    "patch-package": "^8.0.1"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "testMatch": [
+      "**/*.test.js"
+    ],
+    "moduleNameMapper": {
+      "^react-native-libsodium$": "libsodium-wrappers-sumo"
+    },
+    "transform": {
+      "^.+\\.jsx?$": [
+        "babel-jest",
+        {
+          "configFile": "./babel.jest.config.js"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,266 @@
+// Data model per PRD.md §9, §5b (household/invite design), and §10a
+// (end-to-end encryption, decided 2026-09-15).
+//
+// IDs are UUIDs (cuid would also work; UUID chosen to match the appscript
+// backend's Utilities.getUuid()-based ids, so a future data migration from
+// the live Sheets DB doesn't need to remap every id).
+//
+// Encryption convention (§10a): any field holding financial content
+// (amounts, descriptions, category/account names, rule patterns) is never
+// stored as a plaintext column. Instead each such row carries:
+//   - encryptedData: Bytes  — libsodium crypto_secretbox_easy ciphertext of
+//     a JSON payload holding that model's sensitive fields, keyed by the
+//     household's Data Encryption Key (DEK), which the server never holds.
+//   - nonce: Bytes          — the 24-byte nonce used for that secretbox.
+// Columns that stay plaintext are either non-sensitive routing/list
+// metadata (ids, timestamps, dates, month strings) or foreign keys (an id
+// reference doesn't leak the referenced row's encrypted content).
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL") // pooled (PgBouncer) — used by the app at runtime
+  directUrl = env("DIRECT_URL") // unpooled — required for prisma migrate against Neon
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum HouseholdRole {
+  OWNER
+  MEMBER
+}
+
+model Household {
+  id        String   @id @default(uuid())
+  name      String?
+  createdAt DateTime @default(now())
+
+  members       HouseholdMember[]
+  invites       Invite[]
+  accounts      Account[]
+  categories    Category[]
+  categoryRules CategoryRule[]
+  transactions  Transaction[]
+  budgets       Budget[]
+}
+
+// Identity + key-material for a user, split deliberately into two
+// unrelated secrets (decision, 2026-09-15, see PRD §10a):
+//
+//   1. Google Sign-In authenticates *who you are* to the server (verified
+//      via Google's own ID-token signature — no local password verifier
+//      needed at all for login).
+//   2. A separate **vault passphrase**, entered only in the app and never
+//      sent to the server in any form, derives (Argon2id, via
+//      vaultKdfSalt) the key that unlocks encryptedPrivateKey below.
+//
+// These must stay independent: if Google (or a compromised Google
+// session) were enough on its own to unlock the vault, the "developer
+// cannot access user data" property would actually mean "neither can the
+// developer NOR anyone who controls the Google account" — a weaker
+// guarantee than intended. The vault passphrase is what keeps decryption
+// possible only for someone who knows a secret the server never sees.
+model User {
+  id        String   @id @default(uuid())
+  googleId  String   @unique // Google's stable "sub" claim
+  email     String   @unique
+  name      String?
+  createdAt DateTime @default(now())
+
+  // Public-key identity (libsodium crypto_box keypair), used so other
+  // household members can wrap the household DEK to this user without
+  // needing them online at invite time (crypto_box_seal, §10a).
+  publicKey String // base64, safe to be plaintext — this is the public half
+
+  // The matching private key, encrypted client-side with a key derived
+  // from the user's vault passphrase (never their Google credential).
+  // The server only ever stores/relays this ciphertext.
+  encryptedPrivateKey String // base64 ciphertext
+  privateKeyNonce     String // base64, secretbox nonce for the above
+  vaultKdfSalt        String // base64, Argon2id salt for re-deriving the
+  //                            vault-passphrase-wrapping key on a new
+  //                            device/login
+
+  memberships         HouseholdMember[]
+  sessions            Session[]
+  invitesCreated      Invite[]      @relation("InviteCreator")
+  invitesUsed         Invite[]      @relation("InviteRedeemer")
+  transactionsCreated Transaction[] @relation("TransactionCreator")
+}
+
+// Membership is a relationship, not a column on User — see PRD §5b. A user
+// belonging to more than one household later needs no schema change here,
+// just a "which household am I acting in" concept client-side.
+//
+// Also where each member's copy of the household DEK lives (§10a): one
+// copy sealed to their public key (day-to-day unlock via password), and a
+// second copy wrapped with their own recovery key (self-service recovery
+// if the vault passphrase is lost — see PRD §10a's account-recovery
+// decision). Losing both is unrecoverable by design; the household's data
+// isn't lost since other members keep their own working copies.
+//
+// wrappedDek/recoveryWrappedDek/recoveryDekNonce are nullable because they
+// can't all be populated atomically: sealing the DEK to a new member's
+// public key requires that key to already exist, so joining via invite
+// (§5b) necessarily creates this row with wrappedDek still null — an
+// existing member has to complete the grant once the new member exists,
+// then the new member sets up their own recovery code once they can
+// actually decrypt anything. A household's creator is the one exception
+// (they hold the DEK from the moment they generate it, so their own row
+// is fully populated immediately).
+model HouseholdMember {
+  householdId String
+  userId      String
+  role        HouseholdRole @default(MEMBER)
+  joinedAt    DateTime      @default(now())
+
+  // Household DEK sealed to this member's publicKey (crypto_box_seal —
+  // no separate nonce needed, the ephemeral key rides in the ciphertext).
+  // Null until an existing member completes the access grant.
+  wrappedDek String? // base64
+
+  // Household DEK encrypted (crypto_secretbox_easy) with a high-entropy
+  // recovery key generated client-side and shown to the user once to
+  // store themselves — the server never sees the recovery key. Null until
+  // the member sets this up themselves (requires wrappedDek to be set
+  // first, so they have the DEK to wrap).
+  recoveryWrappedDek String? // base64
+  recoveryDekNonce   String? // base64
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([householdId, userId])
+}
+
+// Household-scoped, replacing the appscript backend's single global
+// INVITE_CODE script property — each household mints its own invites.
+model Invite {
+  id              String    @id @default(uuid())
+  householdId     String
+  code            String    @unique
+  createdByUserId String
+  createdAt       DateTime  @default(now())
+  expiresAt       DateTime?
+  usedByUserId    String?
+  usedAt          DateTime?
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  createdBy User      @relation("InviteCreator", fields: [createdByUserId], references: [id])
+  usedBy    User?     @relation("InviteRedeemer", fields: [usedByUserId], references: [id])
+}
+
+// Real session expiry — the appscript backend's sessions never expired,
+// flagged as a gap in PRD §10.
+model Session {
+  token     String   @id @default(uuid())
+  userId    String
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// name/type/institution are encrypted (§10a) — the server knows a
+// household has an account with this id, not what it's called or what
+// kind it is.
+model Account {
+  id          String @id @default(uuid())
+  householdId String
+
+  encryptedData String // base64 — { name, type, institution }
+  nonce         String // base64
+
+  createdAt    DateTime      @default(now())
+  household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  transactions Transaction[]
+}
+
+// name is encrypted (§10a) — uniqueness-per-household is now enforced
+// client-side (decrypt the household's categories, check for a name
+// collision) rather than via a DB constraint, since the server can't read
+// names to compare them.
+model Category {
+  id          String @id @default(uuid())
+  householdId String
+
+  encryptedData String // base64 — { name }
+  nonce         String // base64
+
+  household    Household      @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  rules        CategoryRule[]
+  transactions Transaction[]
+  budgets      Budget[]
+}
+
+// pattern (the merchant/keyword match string) is encrypted (§10a) —
+// matching a transaction description against household rules now happens
+// client-side, alongside categorization generally, since the server never
+// holds plaintext descriptions or patterns to compare.
+model CategoryRule {
+  id          String @id @default(uuid())
+  householdId String
+  categoryId  String
+
+  encryptedData String // base64 — { pattern }
+  nonce         String // base64
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model Transaction {
+  id          String @id @default(uuid())
+  householdId String
+  accountId   String
+  categoryId  String?
+
+  // Kept plaintext (§10a: minimal metadata needed to route/list) as a
+  // YYYY-MM-DD string, matching the existing month-prefix filtering logic
+  // ported from the appscript backend — revisit if that filtering becomes
+  // a real date-range query.
+  date String
+
+  // description, normalizedDescription, and amount are encrypted (§10a):
+  // { description, normalizedDescription, amount }
+  encryptedData String // base64
+  nonce         String // base64
+
+  // Deterministic, keyed dedup fingerprint — HMAC(householdDEK, date +
+  // "|" + amount + "|" + normalizedDescription), computed client-side, so
+  // the server can still enforce "no duplicate transaction per account"
+  // via a DB unique constraint without ever seeing the underlying values.
+  dedupKey String
+
+  reviewed        Boolean  @default(false)
+  createdByUserId String?
+  createdAt       DateTime @default(now())
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
+  category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  createdBy User?     @relation("TransactionCreator", fields: [createdByUserId], references: [id])
+
+  @@unique([accountId, dedupKey])
+  @@index([householdId, date])
+}
+
+// amount is encrypted (§10a); householdId/categoryId/month stay plaintext
+// since they're just routing keys, not financial content, and the
+// existing @@unique constraint (one budget row per category per month)
+// still works unchanged since it doesn't touch the encrypted field.
+model Budget {
+  id          String @id @default(uuid())
+  householdId String
+  categoryId  String
+  month       String // YYYY-MM
+
+  encryptedData String // base64 — { amount }
+  nonce         String // base64
+
+  household Household @relation(fields: [householdId], references: [id], onDelete: Cascade)
+  category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+
+  @@unique([householdId, categoryId, month])
+}
