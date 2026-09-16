@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
@@ -60,6 +60,28 @@ function MainApp() {
 }
 
 /**
+ * Shown while AuthContext checks for an existing session — on the free
+ * Render tier this can mean waiting out a cold-start wake (up to ~1
+ * minute after 15 min idle), so this needs to say something rather than
+ * sit blank the whole time.
+ */
+function LoadingScreen() {
+  const [slow, setSlow] = useState(false);
+  useEffect(() => {
+    const timer = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(timer);
+  }, []);
+  return (
+    <View style={styles.loadingContainer}>
+      <ActivityIndicator size="large" color="#1a6ed8" />
+      <Text style={styles.loadingText}>
+        {slow ? "Waking up the server — this can take up to a minute…" : "Loading…"}
+      </Text>
+    </View>
+  );
+}
+
+/**
  * Four distinct states, not two — see PRD §10a. `unlocked` and
  * `activeHouseholdId` are independent: joining via invite unlocks your
  * own identity (you have a private key) without unlocking any
@@ -67,7 +89,7 @@ function MainApp() {
  */
 function Root() {
   const { ready, user, unlocked, activeHouseholdId } = useAuth();
-  if (!ready) return <View style={styles.container} />;
+  if (!ready) return <LoadingScreen />;
   if (!user) return <LoginScreen />;
   if (!unlocked) return <UnlockScreen />;
   if (!activeHouseholdId) return <PendingAccessScreen />;
@@ -92,6 +114,8 @@ export default function App() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
+  loadingContainer: { flex: 1, backgroundColor: "#fff", justifyContent: "center", alignItems: "center", gap: 12 },
+  loadingText: { color: "#888", fontSize: 13, paddingHorizontal: 32, textAlign: "center" },
   screen: { flex: 1 },
   topBar: {
     flexDirection: "row",

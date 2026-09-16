@@ -45,7 +45,12 @@ export default function LoginScreen() {
   async function handleSubmit() {
     setError(null);
 
-    if (vaultPassphrase.length < MIN_PASSPHRASE_LENGTH) {
+    // Only a *new* passphrase (create or join, both of which set one for
+    // the first time on this user) needs to meet the length bar — logging
+    // in reuses whatever passphrase was already set, which may predate
+    // this check or have been created under different rules (e.g. the
+    // dev-only shortcut default).
+    if (mode !== "login" && vaultPassphrase.length < MIN_PASSPHRASE_LENGTH) {
       setError(`Vault passphrase needs to be at least ${MIN_PASSPHRASE_LENGTH} characters.`);
       return;
     }

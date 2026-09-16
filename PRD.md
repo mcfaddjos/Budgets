@@ -330,6 +330,10 @@ itself* cannot reverse.
   available. Note Google account recovery is irrelevant here — regaining
   Google access doesn't help if the vault passphrase itself is lost, by
   design.
+- **Re-entering the vault passphrase every session — raised 2026-09-16, under discussion, not designed yet.** The private key only ever lives in memory (never persisted, by design), so every cold app start means retyping the vault passphrase, which held up the off-network demo build in practice. The ask: let a device remember it (e.g. behind the device's own biometric/PIN lock via Android Keystore) so it's a one-time-per-device setup, not a type-it-every-time flow. Open questions before this is designed:
+  - **What actually gets cached on-device**: the passphrase itself, the derived vault-unlock key, or the already-decrypted private key — each has a different exposure window if the device is later compromised, and picking one is a real security tradeoff, not just an implementation detail.
+  - **Does this weaken the §10a threat model?** The whole point of the vault passphrase is that it's the one thing never persisted anywhere. Caching it (in any form) behind the device's screen lock is a different, weaker guarantee than "only in the user's head" — needs an explicit decision that this tradeoff is acceptable, not something that quietly ships as a UX nicety.
+  - Is this opt-in per device, or the default going forward? A shared household device likely wants this off; a personal phone likely wants it on.
 - **Open question, not yet resolved**: removing a household member (once
   that flow exists) doesn't automatically revoke their ability to decrypt
   data they already synced locally, and doesn't rotate the household DEK
@@ -511,6 +515,7 @@ day one, cheap to set up now versus untangling later.
 - **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
 - **Custom one-off large-purchase budget (§8.3, raised 2026-09-16)**: does it live in the category/month budget model or as its own object, and does it count toward or sit outside the month's regular surplus/deficit total? Depends on how deficit rollover above is resolved.
 - **"Mark reviewed" (§8.4, pulled from the UI 2026-09-16)**: per-user or shared-per-household flag, and does it belong on every transaction row or only in a bulk review flow off the flagging dashboard?
+- **Device-remembered vault passphrase (§10a, raised 2026-09-16)**: what's actually cached (passphrase, derived key, or decrypted private key) and whether caching anything behind device biometrics is an acceptable weakening of "never persisted anywhere" — needs a decision, not just a convenience implementation.
 - Seasonal budgets already work manually (set a different amount for a category in a given month) — open: what does a reusable "recurring seasonal override" template actually look like (which months, which categories, does it auto-apply or just pre-fill for review)?
 - Monthly reports: archived snapshot per past month, or always recomputed live from current data? Affects whether a later edit to a past transaction should retroactively change an old month's report.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
