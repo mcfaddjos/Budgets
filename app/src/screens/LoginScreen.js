@@ -26,18 +26,9 @@ function askUseDefaultCategories() {
   });
 }
 
-// __DEV__ is a React Native global — always false in a release/production
-// build, so this relaxed length + prefilled value can never ship. Purely
-// so re-testing the login flow repeatedly doesn't mean retyping a real
-// passphrase every time.
-const MIN_PASSPHRASE_LENGTH = __DEV__ ? 4 : 10;
-const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
-
 export default function LoginScreen() {
   const { login, registerNewHousehold, joinHousehold } = useAuth();
   const [mode, setMode] = useState("login"); // 'login' | 'create' | 'join'
-  const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
-  const [confirmPassphrase, setConfirmPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
@@ -45,19 +36,6 @@ export default function LoginScreen() {
   async function handleSubmit() {
     setError(null);
 
-    // Only a *new* passphrase (create or join, both of which set one for
-    // the first time on this user) needs to meet the length bar — logging
-    // in reuses whatever passphrase was already set, which may predate
-    // this check or have been created under different rules (e.g. the
-    // dev-only shortcut default).
-    if (mode !== "login" && vaultPassphrase.length < MIN_PASSPHRASE_LENGTH) {
-      setError(`Vault passphrase needs to be at least ${MIN_PASSPHRASE_LENGTH} characters.`);
-      return;
-    }
-    if (mode === "create" && vaultPassphrase !== confirmPassphrase) {
-      setError("Passphrases don't match.");
-      return;
-    }
     if (mode === "join" && !inviteCode.trim()) {
       setError("Enter the invite code.");
       return;
@@ -66,11 +44,11 @@ export default function LoginScreen() {
     setBusy(true);
     try {
       let result;
-      if (mode === "login") result = await login(vaultPassphrase);
+      if (mode === "login") result = await login();
       else if (mode === "create") {
         const useDefaults = await askUseDefaultCategories();
-        result = await registerNewHousehold(vaultPassphrase, useDefaults);
-      } else result = await joinHousehold(inviteCode.trim(), vaultPassphrase);
+        result = await registerNewHousehold(useDefaults);
+      } else result = await joinHousehold(inviteCode.trim());
 
       if (result === false) {
         // Google sign-in sheet was cancelled — not an error, just stop.
@@ -135,46 +113,13 @@ export default function LoginScreen() {
           </>
         ) : null}
 
-        <Text style={styles.label}>Vault Passphrase</Text>
         <Text style={styles.helpText}>
-          This is separate from your Google password — it's the only thing that can unlock your
-          household's data, and we never send it anywhere.
-          {mode === "create" ? " You'll also get a one-time recovery code after this — save it somewhere safe." : ""}
+          {mode === "login"
+            ? "Unlocks automatically using this device — no passphrase needed."
+            : mode === "create"
+              ? "Your household's data is end-to-end encrypted using a key generated and stored securely on this device — no passphrase to invent or remember."
+              : "Your access is set up automatically using a key generated and stored securely on this device — no passphrase to invent or remember."}
         </Text>
-        <TextInput
-          style={styles.input}
-          value={vaultPassphrase}
-          onChangeText={(text) => {
-            setVaultPassphrase(text);
-            setError(null);
-          }}
-          placeholder="Vault passphrase"
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete="off"
-          importantForAutofill="no"
-          textContentType="none"
-        />
-
-        {mode === "create" ? (
-          <>
-            <Text style={styles.label}>Confirm Passphrase</Text>
-            <TextInput
-              style={styles.input}
-              value={confirmPassphrase}
-              onChangeText={(text) => {
-                setConfirmPassphrase(text);
-                setError(null);
-              }}
-              placeholder="Confirm passphrase"
-              autoCapitalize="none"
-              autoCorrect={false}
-              autoComplete="off"
-              importantForAutofill="no"
-              textContentType="none"
-            />
-          </>
-        ) : null}
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -206,7 +151,7 @@ const styles = StyleSheet.create({
   modeButtonText: { color: "#333", fontWeight: "600", fontSize: 13 },
   modeButtonTextActive: { color: "#fff" },
   label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 6, marginTop: 14 },
-  helpText: { fontSize: 12, color: "#888", marginBottom: 8, lineHeight: 16 },
+  helpText: { fontSize: 12, color: "#888", marginTop: 14, marginBottom: 8, lineHeight: 16 },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",

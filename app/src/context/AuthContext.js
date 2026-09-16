@@ -4,6 +4,7 @@ import { signInWithGoogle, signOutOfGoogle } from "../auth/google";
 import * as keys from "../crypto/keys";
 import * as records from "../crypto/records";
 import * as session from "../crypto/session";
+import { getOrCreateVaultSecret } from "../crypto/deviceSecret";
 import { DEFAULT_CATEGORIES } from "../categorize/defaults";
 
 const AuthContext = createContext(null);
@@ -30,6 +31,7 @@ export function AuthProvider({ children }) {
   const [memberships, setMemberships] = useState([]);
   const [unlocked, setUnlocked] = useState(false); // mirrors session.isUnlocked(), kept in React state so the UI re-renders
   const [pendingRecoveryCode, setPendingRecoveryCode] = useState(null); // { householdId, code } — shown once, then acknowledged away
+  const [unlockError, setUnlockError] = useState(null); // §10c: set when auto-unlock fails (e.g. a device that never held this account's secret)
   const [ready, setReady] = useState(false);
   const [serverUrl, setServerUrlState] = useState(getServerUrl());
 
@@ -51,6 +53,16 @@ export function AuthProvider({ children }) {
           // backend), not a bug worth surfacing to Logcat.
           const me = await api.me({ silent: true });
           applyIdentity(me);
+          // §10c: no passphrase to prompt for anymore — unlock immediately
+          // using this device's own stored secret. Uses `me` directly
+          // rather than the `keyMaterial` state just set above — that
+          // state update hasn't landed yet in this same tick, so reading
+          // it here would see the stale (null) value from before this
+          // effect ran. A failure leaves `unlocked` false and UnlockScreen
+          // shows an explanatory error instead of a retry form.
+          await unlockWithKeyMaterial(buildKeyMaterial(me), me.memberships || []).catch((err) =>
+            setUnlockError(err.message)
+          );
         } catch (err) {
           // Only a genuine server rejection (expired/invalid token) means the
           // stored token is actually bad — a network blip says nothing about
@@ -62,15 +74,19 @@ export function AuthProvider({ children }) {
     });
   }, []);
 
-  /** Common shape of both auth.me and auth.login responses — sets identity/membership state, but does not unlock the vault (that needs the passphrase). */
-  function applyIdentity(response) {
-    setUser({ id: response.id, email: response.email, name: response.name });
-    setKeyMaterial({
+  function buildKeyMaterial(response) {
+    return {
       publicKey: response.publicKey,
       encryptedPrivateKey: response.encryptedPrivateKey,
       privateKeyNonce: response.privateKeyNonce,
       vaultKdfSalt: response.vaultKdfSalt,
-    });
+    };
+  }
+
+  /** Common shape of both auth.me and auth.login responses — sets identity/membership state, but does not unlock the vault. */
+  function applyIdentity(response) {
+    setUser({ id: response.id, email: response.email, name: response.name });
+    setKeyMaterial(buildKeyMaterial(response));
     setMemberships(response.memberships || []);
   }
 
@@ -80,17 +96,40 @@ export function AuthProvider({ children }) {
   }
 
   /**
+   * Shared by unlockVault (reads current state) and the cold-start effect
+   * (passes freshly-fetched data directly, since React state set moments
+   * earlier in the same tick isn't readable yet) — re-derives the private
+   * key from this device's stored secret (§10c), no passphrase involved.
+   * Throws with a message meant to be shown as-is if this device's secret
+   * doesn't match what the account's key material was encrypted with (set
+   * up on a different device — not recoverable here yet, see the
+   * §10c/§15 open question on recovery-code redemption).
+   */
+  async function unlockWithKeyMaterial(km, currentMemberships) {
+    setUnlockError(null);
+    const secret = await getOrCreateVaultSecret();
+    let privateKey;
+    try {
+      privateKey = await keys.unlockPrivateKey({ passphrase: secret, ...km });
+    } catch {
+      throw new Error(
+        "Couldn't unlock this account on this device. This account's key was set up on a different device — restoring access on a new device isn't supported yet."
+      );
+    }
+    session.setUnlockedIdentity(km.publicKey, privateKey);
+    unlockAvailableDeks(currentMemberships, km.publicKey);
+    setUnlocked(true);
+  }
+
+  /**
    * App restart / any time session.js has been cleared (Metro Fast
    * Refresh, or the process was killed) but the backend session token is
-   * still valid — re-derives the private key from the passphrase without
-   * going through Google Sign-In again.
+   * still valid. Also used by UnlockScreen's "Try again" after a failed
+   * auto-unlock.
    */
-  async function unlockVault(vaultPassphrase) {
+  async function unlockVault() {
     if (!keyMaterial) throw new Error("Nothing to unlock — sign in first");
-    const privateKey = await keys.unlockPrivateKey({ passphrase: vaultPassphrase, ...keyMaterial });
-    session.setUnlockedIdentity(keyMaterial.publicKey, privateKey);
-    unlockAvailableDeks(memberships, keyMaterial.publicKey);
-    setUnlocked(true);
+    await unlockWithKeyMaterial(keyMaterial, memberships);
   }
 
   /**
@@ -99,11 +138,12 @@ export function AuthProvider({ children }) {
    * categories, or add your own from scratch?") instead of always
    * seeding the built-in default list.
    */
-  async function registerNewHousehold(vaultPassphrase, seedDefaults = true) {
+  async function registerNewHousehold(seedDefaults = true) {
     const idToken = await signInWithGoogle();
     if (!idToken) return false; // user cancelled the Google sign-in sheet
 
-    const { privateKey, forServer } = await keys.createUserKeyMaterial(vaultPassphrase);
+    const secret = await getOrCreateVaultSecret();
+    const { privateKey, forServer } = await keys.createUserKeyMaterial(secret);
     const dek = await keys.generateHouseholdDek();
     const wrappedDek = keys.wrapDekForMember(dek, forServer.publicKey);
     const recoveryKey = await keys.generateRecoveryKey();
@@ -152,11 +192,12 @@ export function AuthProvider({ children }) {
    * the caller should show a "waiting for a household member to let you
    * in" state and call refreshMemberships() periodically until it clears.
    */
-  async function joinHousehold(inviteCode, vaultPassphrase) {
+  async function joinHousehold(inviteCode) {
     const idToken = await signInWithGoogle();
     if (!idToken) return false;
 
-    const { privateKey, forServer } = await keys.createUserKeyMaterial(vaultPassphrase);
+    const secret = await getOrCreateVaultSecret();
+    const { privateKey, forServer } = await keys.createUserKeyMaterial(secret);
     const result = await api.joinHouseholdViaInvite({ idToken, inviteCode, ...forServer });
 
     await setToken(result.token);
@@ -167,18 +208,14 @@ export function AuthProvider({ children }) {
     return { householdId: result.householdId, pendingKeyGrant: true };
   }
 
-  /** Returning user, any device. */
-  async function login(vaultPassphrase) {
+  /** Returning user, this device — see unlockWithKeyMaterial's note on a device this account has never unlocked on before. */
+  async function login() {
     const idToken = await signInWithGoogle();
     if (!idToken) return false;
 
     const result = await api.login(idToken);
     await setToken(result.token);
-
-    const privateKey = await keys.unlockPrivateKey({ passphrase: vaultPassphrase, ...result });
-    session.setUnlockedIdentity(result.publicKey, privateKey);
-    unlockAvailableDeks(result.memberships, result.publicKey);
-    setUnlocked(true);
+    await unlockWithKeyMaterial(buildKeyMaterial(result), result.memberships || []);
     applyIdentity(result);
     return true;
   }
@@ -239,6 +276,7 @@ export function AuthProvider({ children }) {
     setKeyMaterial(null);
     setMemberships([]);
     setPendingRecoveryCode(null);
+    setUnlockError(null);
   }
 
   return (
@@ -251,6 +289,7 @@ export function AuthProvider({ children }) {
         ready,
         serverUrl,
         pendingRecoveryCode,
+        unlockError,
         updateServerUrl,
         registerNewHousehold,
         joinHousehold,

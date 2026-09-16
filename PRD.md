@@ -384,10 +384,7 @@ itself* cannot reverse.
   available. Note Google account recovery is irrelevant here — regaining
   Google access doesn't help if the vault passphrase itself is lost, by
   design.
-- **Re-entering the vault passphrase every session — raised 2026-09-16, under discussion, not designed yet.** The private key only ever lives in memory (never persisted, by design), so every cold app start means retyping the vault passphrase, which held up the off-network demo build in practice. The ask: let a device remember it (e.g. behind the device's own biometric/PIN lock via Android Keystore) so it's a one-time-per-device setup, not a type-it-every-time flow. Open questions before this is designed:
-  - **What actually gets cached on-device**: the passphrase itself, the derived vault-unlock key, or the already-decrypted private key — each has a different exposure window if the device is later compromised, and picking one is a real security tradeoff, not just an implementation detail.
-  - **Does this weaken the §10a threat model?** The whole point of the vault passphrase is that it's the one thing never persisted anywhere. Caching it (in any form) behind the device's screen lock is a different, weaker guarantee than "only in the user's head" — needs an explicit decision that this tradeoff is acceptable, not something that quietly ships as a UX nicety.
-  - Is this opt-in per device, or the default going forward? A shared household device likely wants this off; a personal phone likely wants it on.
+- ~~Re-entering the vault passphrase every session~~ **Resolved — see §10c (decision, 2026-09-16).** Rather than caching a human-chosen passphrase (which would have weakened "never persisted anywhere" as a tradeoff needing its own sign-off), the passphrase itself was removed: every user's vault key is now a random secret generated and held in the device's own secure storage, never typed or chosen by anyone. §10c has the full design, the deferred biometric-gate follow-up, and the recovery-code-redemption gap this surfaced.
 - **Open question, not yet resolved**: removing a household member (once
   that flow exists) doesn't automatically revoke their ability to decrypt
   data they already synced locally, and doesn't rotate the household DEK
@@ -424,7 +421,41 @@ To keep the app feeling instant regardless of backend cold-start behavior
 - This makes backend cold-starts mostly invisible on repeat app opens —
   only a genuinely first-ever launch (empty cache) waits on the network.
 
-### 10c. Passphrase-free invite join (proposed, raised 2026-09-16, under discussion)
+### 10c. Passphrase-free unlock (decision, 2026-09-16 — supersedes the "invite join" framing below)
+
+**Decided and built**: option 1 below (device-bound key material), applied
+uniformly to **everyone** — the household creator and invited members
+alike — not just invitees as the original framing assumed. A random
+32-byte secret is generated once per device (`app/src/crypto/deviceSecret.js`)
+and held in `expo-secure-store` (Android Keystore / iOS Keychain,
+encrypted at rest), fed into the exact same `createUserKeyMaterial`/
+`unlockPrivateKey` functions that used to take a typed passphrase — the
+encryption chain itself (§10a) is unchanged, only where that secret string
+comes from. `LoginScreen`'s vault-passphrase fields are gone entirely; app
+open/login/unlock is now silent and automatic. This resolved the original
+"creator vs. invitee inconsistency" open question below by not choosing
+between them — both use the identical mechanism.
+
+**Explicitly deferred, discovered while building this:**
+
+- **No biometric/PIN gate on top of the stored secret yet.**
+  `requireAuthentication` support on `expo-secure-store` varies enough
+  across Android versions/manufacturers that it risked making the unlock
+  flaky without a real device matrix to test against — the secret is
+  still Keystore-encrypted at rest, just not gated by an explicit prompt
+  each open. Worth adding back once that can be tested properly.
+- **A new device has no way in — and this is a bigger gap than it first
+  looked.** Discovered while implementing: the recovery code (§10a) is
+  *generated and shown* at signup, but nothing in the app actually
+  *redeems* one — there's no "lost access, enter your recovery code" flow
+  built at all, on any device, regardless of this change. Recovery mostly
+  wasn't functional before this either, but the old typed-passphrase model
+  at least meant "any device" worked as long as you remembered the
+  passphrase. This change makes device-loss the *only* way to need
+  recovery, while recovery itself still can't be redeemed — a real gap to
+  close, not just a nice-to-have polish item. See open questions below.
+
+**Original analysis (kept for context on why option 1 was chosen):**
 
 **Motivation**: inventing and typing a vault passphrase is real friction,
 and it's a strange ask specifically for someone being *invited* into a
@@ -476,23 +507,11 @@ removes the friction for the invitee specifically without a permanent
 device-lock-in or a weakened guarantee — but it needs a concrete transport
 design before it's more than a direction.
 
-**Open questions before this is designed further:**
+**Original open questions (creator-vs-invitee consistency and the option-1-vs-2 choice) are resolved by what shipped above.** What's actually still open, post-implementation:
 
-- Does the household **creator** still use a memorized passphrase (there's
-  no inviter to hand them a secret), while invited members use one of the
-  above instead? An inconsistent model between creator and invitee needs
-  to be a deliberate choice, not an accidental side effect of solving only
-  the invite case.
-- How does the existing recovery-code mechanism (§10a) interact with a
-  device-bound secret (option 1) — does losing the device become exactly
-  today's "lost passphrase" scenario the recovery code already covers, or
-  does device-bound access need its own, separate recovery story?
-- **Multi-device support is currently implicit and needs to be named
-  explicitly**: today, typing the same passphrase unlocks the vault from
-  any device. Option 1 breaks that unless a separate "authorize a new
-  device for my own account" flow — conceptually similar to the existing
-  invite/grant handshake, but for one person's second device — gets built
-  too. Is that in scope now, or an explicitly accepted gap for v1?
+- **Recovery-code redemption flow (real gap, not yet designed at all)**: a "lost this device, here's my recovery code" screen needs to exist — generate/unwrap-DEK plumbing already exists in `keys.js` (`unwrapDekWithRecoveryKey`), but nothing calls it. This almost certainly also needs a **new keypair + updated server-side key material** for the new device, then using the recovery code to re-wrap the household DEK to that new keypair — a real backend change (there's no "replace my key material" action today), not just a UI addition.
+- Add back a biometric/PIN gate on top of the stored secret (deferred above) once there's a device matrix to test `requireAuthentication` against.
+- Multi-device beyond the recovery-code path (e.g., an explicit "authorize a new device" handshake from an already-unlocked device, instead of only recovery-code-or-nothing) — not designed, not blocking today's single-device-per-person usage.
 
 ## 11. Success Metrics
 
@@ -639,10 +658,10 @@ day one, cheap to set up now versus untangling later.
 - **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
 - **Custom one-off large-purchase budget (§8.3, raised 2026-09-16)**: does it live in the category/month budget model or as its own object, and does it count toward or sit outside the month's regular surplus/deficit total? Depends on how deficit rollover above is resolved.
 - **"Mark reviewed" (§8.4, pulled from the UI 2026-09-16)**: per-user or shared-per-household flag, and does it belong on every transaction row or only in a bulk review flow off the flagging dashboard?
-- **Device-remembered vault passphrase (§10a, raised 2026-09-16)**: what's actually cached (passphrase, derived key, or decrypted private key) and whether caching anything behind device biometrics is an acceptable weakening of "never persisted anywhere" — needs a decision, not just a convenience implementation.
+- ~~Device-remembered vault passphrase~~ **Resolved by §10c (2026-09-16)**: superseded by the passphrase-free device-secret model, which removes the passphrase (and thus the "should we cache it" question) entirely rather than caching it.
 - Seasonal budgets already work manually (set a different amount for a category in a given month) — open: what does a reusable "recurring seasonal override" template actually look like (which months, which categories, does it auto-apply or just pre-fill for review)?
 - Monthly reports: archived snapshot per past month, or always recomputed live from current data? Affects whether a later edit to a past transaction should retroactively change an old month's report.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
 - §10a: removing a household member doesn't yet revoke their previously-synced local access or rotate the household DEK — needs a design before a member-removal flow ships (not blocking today's 2-person trusted household).
 - **Leaving a household (§5c, raised 2026-09-16)**: same unresolved DEK-rotation gap as member removal above, plus whether re-joining later preserves old attribution, and whether "one household per user" is actually enforced anywhere.
-- **Passphrase-free invite join (§10c, raised 2026-09-16)**: device-bound key material vs. a secret embedded in the invite itself vs. household-ID-alone (ruled out) — and whether the household creator ends up on a different unlock model than invited members.
+- **Passphrase-free unlock (§10c, decided/built 2026-09-16)**: device-bound secret ships for everyone; what's left is a real recovery-code redemption flow (doesn't exist at all today, needs new server-side key-material-replacement support too) and re-adding a biometric gate once there's a device matrix to test it against.

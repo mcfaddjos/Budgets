@@ -1,83 +1,59 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
 
 /**
- * Shown when there's a valid backend session but the vault isn't unlocked
- * — the private key is only ever held in memory (§10a), so it's gone
- * after any app restart even though the login itself is still valid.
+ * §10c: unlocking is automatic now (this device's own stored secret, no
+ * typing) — AuthContext already attempts it once on cold start, before
+ * this screen could even render. So by the time this screen shows at all,
+ * that attempt already failed (unlockError is set) — this is an error/
+ * retry screen, not an entry form.
  */
-// See LoginScreen.js — __DEV__ is always false in a release build.
-const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
-
 export default function UnlockScreen() {
-  const { user, unlockVault, logout } = useAuth();
-  const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
-  const [error, setError] = useState(null);
+  const { user, unlockError, unlockVault, logout } = useAuth();
   const [busy, setBusy] = useState(false);
+  const [retryError, setRetryError] = useState(null);
 
-  async function handleUnlock() {
-    setError(null);
+  async function handleRetry() {
+    setRetryError(null);
     setBusy(true);
     try {
-      await unlockVault(vaultPassphrase);
+      await unlockVault();
     } catch (err) {
-      setError("Wrong passphrase — try again.");
+      setRetryError(err.message);
     } finally {
       setBusy(false);
     }
   }
 
   return (
-    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === "ios" ? "padding" : "height"}>
+    <View style={styles.container}>
       <View style={styles.content}>
         <Text style={styles.title}>Welcome back{user?.name ? `, ${user.name}` : ""}</Text>
-        <Text style={styles.subtitle}>Enter your vault passphrase to unlock your household's data.</Text>
+        {busy ? (
+          <ActivityIndicator size="large" color="#1a6ed8" style={styles.spinner} />
+        ) : (
+          <Text style={styles.error}>{retryError || unlockError}</Text>
+        )}
 
-        <TextInput
-          style={styles.input}
-          value={vaultPassphrase}
-          onChangeText={(text) => {
-            setVaultPassphrase(text);
-            setError(null);
-          }}
-          placeholder="Vault passphrase"
-          autoCapitalize="none"
-          autoCorrect={false}
-          autoComplete="off"
-          importantForAutofill="no"
-          textContentType="none"
-          autoFocus
-        />
-
-        {error ? <Text style={styles.error}>{error}</Text> : null}
-
-        <TouchableOpacity style={styles.button} onPress={handleUnlock} disabled={busy}>
-          <Text style={styles.buttonText}>{busy ? "Unlocking…" : "Unlock"}</Text>
+        <TouchableOpacity style={styles.button} onPress={handleRetry} disabled={busy}>
+          <Text style={styles.buttonText}>{busy ? "Unlocking…" : "Try again"}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.linkButton} onPress={logout}>
           <Text style={styles.linkText}>Not you? Log out</Text>
         </TouchableOpacity>
       </View>
-    </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#fff" },
   content: { flex: 1, justifyContent: "center", padding: 24 },
-  title: { fontSize: 22, fontWeight: "700", textAlign: "center" },
-  subtitle: { fontSize: 14, color: "#666", textAlign: "center", marginTop: 8, marginBottom: 28 },
-  input: {
-    borderWidth: 1,
-    borderColor: "#ddd",
-    borderRadius: 8,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 16,
-  },
-  error: { color: "#c0392b", marginTop: 16, textAlign: "center" },
+  title: { fontSize: 22, fontWeight: "700", textAlign: "center", marginBottom: 16 },
+  spinner: { marginVertical: 16 },
+  error: { color: "#c0392b", textAlign: "center", fontSize: 14, lineHeight: 20 },
   button: {
     backgroundColor: "#1a1a1a",
     borderRadius: 8,
