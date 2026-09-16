@@ -286,9 +286,9 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 
 ### 8.5 Reporting
 - **Monthly report**: a standing per-month summary (total spend, spend by category, budget variance, rollover balances carried in/out) that a user can look back at for any past month, not just the current one — effectively an archived snapshot rather than something recomputed only for "now."
-- Trend view: category spend over time (last 3/6/12 months).
+- Trend view: category spend over time (last 3/6/12 months) — a first version of this shipped 2026-09-16, see §8.8.
 - Export transactions and summaries to CSV and PDF.
-- Per-person breakdown, given §5a: how much of this month's spend did each household member enter, per category and in total.
+- Per-person breakdown, given §5a: how much of this month's spend did each household member enter, per category and in total — see §8.8's report catalog (not yet built as a report).
 
 ### 8.6 Receipt & Photo Capture (roadmap, not started)
 
@@ -353,6 +353,64 @@ top bar.
   than doing anything. Established this session as the pattern going
   forward for shipping a visible placeholder before the real feature
   exists, rather than hiding unbuilt options entirely.
+- **Household management absorbed into Settings (2026-09-16)**: invite
+  creation, the pending-access-grant list, and the admin seed tool all
+  moved here from the standalone Household tab, which no longer exists —
+  freeing that tab slot for Reports (§8.8).
+
+### 8.8 Reports (built, 2026-09-16 — first three of a larger catalog)
+
+Replaces the old Household tab. Shows **one report at a time** (a picker
+chip row across the top), not a dashboard of everything at once — each
+report is a self-contained component that owns its own data-fetching and
+its own settings/filters (a month, a category, a date range), so adding a
+new report is: write the component, add one line to
+`app/src/reports/registry.js`. The screen shell never needs to change.
+
+**Charting approach**: plain `View`-based bars (width/height proportional
+to value), not a charting library — avoids adding a new native dependency
+for a first pass. Category colors come from a fixed 8-hue categorical
+palette (`app/src/theme/chartColors.js`), validated with the dataviz
+skill's six-check script against this app's actual light/dark card
+surfaces (worst-case adjacent CVD ΔE 9.1 light / 8.4 dark, both clear the
+≥8 target); a 9th+ category folds into "Other" rather than generating a
+new hue, per that skill's rule that categorical hues are never generated
+past a validated set. Real chart types (pie/donut, true line charts with
+hover) would need an actual charting library (`react-native-svg` +
+something built on it) — worth it once the report catalog below grows
+enough to justify the extra native dependency and rebuild it requires,
+not before.
+
+**Report catalog** — the three marked *(built)* ship now; the rest are
+roadmap, added here so the catalog is visible before more get built:
+
+1. **Spending by Category** *(built)* — current month's spend per
+   category as horizontal bars, sorted descending, with prev/next month
+   navigation as its setting.
+2. **Year-to-Date Surplus/Deficit** *(built)* — a hero YTD total plus a
+   diverging bar-per-month chart (surplus above a zero baseline, deficit
+   below), using `budget − actual` per month from January through the
+   current month.
+3. **Category Spend Trend** *(built)* — one category's actual spend over
+   the last 6 months as bars, with a category-chip picker as its setting
+   (the "drill into one category" case named when this was scoped).
+4. **Category Budget Variance Ranking** *(roadmap)* — which categories
+   run over/under budget most consistently across months, ranked, not
+   just a single month's snapshot.
+5. **Day-by-Day / Day-of-Week Spending Pattern** *(roadmap)* — the
+   "day by day" granularity named when this was scoped; e.g. does spending
+   cluster on weekends, or a particular day of the month.
+6. **Per-Person Spend Breakdown** *(roadmap)* — how much each household
+   member entered, per category and in total (already a stated goal in
+   §8.5/§7 story 8, not yet built as an actual report).
+7. **Account Spend Breakdown** *(roadmap)* — spend per account/card,
+   relevant now that accounts can have distinct owners (§8.1's account
+   ownership).
+
+**Open questions for the roadmap reports above**: none are designed in
+detail yet — each will need its own pass at "what's the setting, what's
+the chart shape" the way the three built ones got, not just a title in
+this list.
 
 ## 9. Data Model (high level, post §5a/§5b household migration)
 
@@ -717,4 +775,5 @@ day one, cheap to set up now versus untangling later.
 - §10a: removing a household member doesn't yet revoke their previously-synced local access or rotate the household DEK — needs a design before a member-removal flow ships (not blocking today's 2-person trusted household).
 - **Leaving a household (§5c, raised 2026-09-16)**: same unresolved DEK-rotation gap as member removal above, plus whether re-joining later preserves old attribution, and whether "one household per user" is actually enforced anywhere.
 - **Platform-level admin (§5d, raised 2026-09-16)**: roadmap only, needs real conversation before design — how a cross-household admin role is modeled, what "manage" can even mean under §10a's zero-knowledge server, not scoped further than that on purpose.
+- **Reports roadmap (§8.8, raised 2026-09-16)**: 4 of 7 cataloged reports aren't built yet (budget variance ranking, day-by-day pattern, per-person breakdown, account breakdown) — each needs its own settings/chart-shape design pass before implementation, same as the three that shipped.
 - **Passphrase-free unlock (§10c, decided/built 2026-09-16)**: device-bound secret ships for everyone; what's left is a real recovery-code redemption flow (doesn't exist at all today, needs new server-side key-material-replacement support too) and re-adding a biometric gate once there's a device matrix to test it against.

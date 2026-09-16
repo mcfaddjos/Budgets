@@ -1,19 +1,97 @@
-import { Alert, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useCallback, useEffect, useState } from "react";
+import { ActivityIndicator, Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { useThemedStyles, useTheme } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
+import { seedSeptemberDemoData } from "../data/devSeed";
 import appConfig from "../../app.json";
+
+const INVITE_EXPIRES_IN_DAYS = 7;
 
 function notBuiltYet(feature) {
   Alert.alert("Not built yet", `${feature} isn't wired up yet — this is a placeholder for where it'll live.`);
 }
 
 export default function SettingsScreen({ onClose }) {
-  const { user, memberships, activeHouseholdId, serverUrl, logout } = useAuth();
+  const {
+    user,
+    memberships,
+    activeHouseholdId,
+    isHouseholdOwner,
+    serverUrl,
+    logout,
+    createInvite,
+    listPendingKeyGrants,
+    grantAccessTo,
+  } = useAuth();
   const { scheme, setScheme } = useTheme();
   const s = useThemedStyles(styles, darkStyles);
+  const queryClient = useQueryClient();
+
+  const [pending, setPending] = useState([]);
+  const [loadingPending, setLoadingPending] = useState(true);
+  const [invite, setInvite] = useState(null);
+  const [creatingInvite, setCreatingInvite] = useState(false);
+  const [grantingUserId, setGrantingUserId] = useState(null);
+  const [seeding, setSeeding] = useState(false);
 
   const role = memberships.find((m) => m.householdId === activeHouseholdId)?.role;
+
+  const loadPending = useCallback(async () => {
+    try {
+      setPending(await listPendingKeyGrants(activeHouseholdId));
+    } catch (err) {
+      Alert.alert("Couldn't load pending members", err.message);
+    } finally {
+      setLoadingPending(false);
+    }
+  }, [activeHouseholdId, listPendingKeyGrants]);
+
+  useEffect(() => {
+    loadPending();
+  }, [loadPending]);
+
+  async function handleCreateInvite() {
+    setCreatingInvite(true);
+    try {
+      const result = await createInvite(activeHouseholdId, INVITE_EXPIRES_IN_DAYS);
+      setInvite(result);
+    } catch (err) {
+      Alert.alert("Couldn't create invite", err.message);
+    } finally {
+      setCreatingInvite(false);
+    }
+  }
+
+  async function handleGrant(member) {
+    setGrantingUserId(member.userId);
+    try {
+      await grantAccessTo(activeHouseholdId, member.userId, member.publicKey);
+      setPending((prev) => prev.filter((m) => m.userId !== member.userId));
+    } catch (err) {
+      Alert.alert("Couldn't grant access", err.message);
+    } finally {
+      setGrantingUserId(null);
+    }
+  }
+
+  async function handleSeedDemoData() {
+    setSeeding(true);
+    try {
+      const result = await seedSeptemberDemoData(activeHouseholdId);
+      await queryClient.invalidateQueries();
+      Alert.alert(
+        "Demo data seeded",
+        `${result.categoriesCreated} categories, ${result.budgetsSet} budgets, ${result.transactionsCreated} transactions.` +
+          (result.transactionsSkipped ? `\n\n${result.transactionsSkipped}` : "")
+      );
+    } catch (err) {
+      Alert.alert("Couldn't seed demo data", err.message);
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   return (
     <View style={s.container}>
@@ -39,8 +117,67 @@ export default function SettingsScreen({ onClose }) {
           <Text style={s.rowSecondary}>
             {role === "OWNER" ? "You created this household (Owner)." : "You're a member of this household."}
           </Text>
-          <Text style={s.hint}>Invites and member access are managed on the Household tab.</Text>
         </View>
+
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Invite someone</Text>
+          {invite ? (
+            <View style={s.inviteBox}>
+              <Text style={s.inviteCode} selectable>
+                {invite.code}
+              </Text>
+              <Text style={s.hint}>Valid {INVITE_EXPIRES_IN_DAYS} days, one-time use. Long-press to copy.</Text>
+            </View>
+          ) : null}
+          <TouchableOpacity style={s.button} onPress={handleCreateInvite} disabled={creatingInvite}>
+            <Text style={s.buttonText}>{creatingInvite ? "Creating…" : "Create Invite Code"}</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Waiting for access</Text>
+          <Text style={s.hint}>
+            Someone who joined with an invite can't decrypt anything until you grant them access from here — see PRD
+            §10a.
+          </Text>
+          {loadingPending ? (
+            <ActivityIndicator style={{ marginTop: 12 }} />
+          ) : (
+            <FlatList
+              data={pending}
+              keyExtractor={(item) => item.userId}
+              scrollEnabled={false}
+              ListEmptyComponent={<Text style={s.rowSecondary}>Nobody waiting right now.</Text>}
+              renderItem={({ item }) => (
+                <View style={s.pendingRow}>
+                  <Text style={s.rowPrimary}>{item.name || item.email}</Text>
+                  <TouchableOpacity
+                    style={s.grantButton}
+                    onPress={() => handleGrant(item)}
+                    disabled={grantingUserId === item.userId}
+                  >
+                    <Text style={s.grantButtonText}>
+                      {grantingUserId === item.userId ? "Granting…" : "Grant access"}
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            />
+          )}
+        </View>
+
+        {__DEV__ || isHouseholdOwner ? (
+          <View style={s.section}>
+            <Text style={s.sectionTitle}>Admin tools</Text>
+            <Text style={s.hint}>
+              Only visible to this household's owner. Seeds this household with the real category names and
+              confidently-parseable transactions from the September spreadsheet.
+            </Text>
+            <TouchableOpacity style={s.button} onPress={handleSeedDemoData} disabled={seeding}>
+              <Text style={s.buttonText}>{seeding ? "Seeding…" : "Seed September Demo Data"}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <View style={s.section}>
           <Text style={s.sectionTitle}>Appearance</Text>
@@ -107,7 +244,19 @@ const styles = StyleSheet.create({
   sectionTitle: { fontSize: 13, fontWeight: "700", color: "#888", textTransform: "uppercase", marginBottom: 10 },
   rowPrimary: { fontSize: 16, fontWeight: "600", color: "#1a1a1a" },
   rowSecondary: { fontSize: 14, color: "#555", marginTop: 2 },
-  hint: { fontSize: 12, color: "#999", marginTop: 8, lineHeight: 17 },
+  hint: { fontSize: 12, color: "#999", marginBottom: 8, lineHeight: 17 },
+  inviteBox: { backgroundColor: "#f2f2f2", borderRadius: 8, padding: 12, marginBottom: 12 },
+  inviteCode: { fontFamily: "monospace", fontSize: 16, textAlign: "center", letterSpacing: 1, marginBottom: 6 },
+  pendingRow: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: "#eee",
+  },
+  grantButton: { backgroundColor: "#1a1a1a", borderRadius: 6, paddingVertical: 6, paddingHorizontal: 12 },
+  grantButtonText: { color: "#fff", fontSize: 12, fontWeight: "600" },
   modeRow: { flexDirection: "row", gap: 8 },
   modeButton: {
     flex: 1,
@@ -136,6 +285,10 @@ const darkStyles = {
   rowPrimary: { color: dark.text },
   rowSecondary: { color: dark.textMuted },
   hint: { color: dark.textFaint },
+  inviteBox: { backgroundColor: dark.bgAlt },
+  inviteCode: { color: dark.text },
+  pendingRow: { borderBottomColor: dark.border },
+  grantButton: { backgroundColor: dark.accent },
   modeButton: { borderColor: dark.border },
   modeButtonActive: { backgroundColor: dark.accent, borderColor: dark.accent },
   modeButtonText: { color: dark.text },

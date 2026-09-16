@@ -6,7 +6,7 @@ const TABS = [
   { key: "accounts", label: "Accounts" },
   { key: "transactions", label: "Transactions" },
   { key: "budgets", label: "Budgets" },
-  { key: "household", label: "Household" },
+  { key: "reports", label: "Reports" },
 ];
 
 export default function TabBar({ active, onChange }) {
@@ -29,6 +29,7 @@ const styles = StyleSheet.create({
     borderTopColor: "#eee",
     backgroundColor: "#fff",
     paddingTop: 8,
+    paddingBottom: 10,
   },
   tab: { flex: 1, alignItems: "center", paddingVertical: 8 },
   label: { fontSize: 13, color: "#999", fontWeight: "600" },

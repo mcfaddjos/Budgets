@@ -3,7 +3,7 @@
 // (including from the persisted store, surviving app restarts)
 // immediately, then revalidates in the background per queryClient.js's
 // staleTime. Screens should use these instead of calling repo.js directly.
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import * as repo from "./repo";
 
@@ -144,6 +144,26 @@ export function useBudgetSummary(month) {
     queryKey: queryKeys.budgets(householdId, month),
     queryFn: () => repo.getBudgetSummary(householdId, month),
     enabled: !!householdId,
+  });
+}
+
+/**
+ * Same per-month summary as useBudgetSummary, fetched for a whole list of
+ * months at once — the shared building block for any report that spans
+ * more than one month (year-to-date surplus/deficit, a category's spend
+ * trend). `months` is a plain array of "YYYY-MM" strings; the count can
+ * change (e.g. a year in progress has fewer months than a full year),
+ * which is exactly what useQueries (unlike a fixed useQuery per month)
+ * supports.
+ */
+export function useMonthlyBudgetSummaries(months) {
+  const householdId = useHouseholdId();
+  return useQueries({
+    queries: months.map((month) => ({
+      queryKey: queryKeys.budgets(householdId, month),
+      queryFn: () => repo.getBudgetSummary(householdId, month),
+      enabled: !!householdId,
+    })),
   });
 }
 

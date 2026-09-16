@@ -13,7 +13,7 @@ import PendingAccessScreen from "./src/screens/PendingAccessScreen";
 import AccountsScreen from "./src/screens/AccountsScreen";
 import TransactionsScreen from "./src/screens/TransactionsScreen";
 import BudgetsScreen from "./src/screens/BudgetsScreen";
-import HouseholdScreen from "./src/screens/HouseholdScreen";
+import ReportsScreen from "./src/screens/ReportsScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
 import TabBar from "./src/components/TabBar";
 import RecoveryCodeModal from "./src/components/RecoveryCodeModal";
@@ -27,7 +27,7 @@ const SCREENS = {
   accounts: AccountsScreen,
   transactions: TransactionsScreen,
   budgets: BudgetsScreen,
-  household: HouseholdScreen,
+  reports: ReportsScreen,
 };
 
 function MainApp() {

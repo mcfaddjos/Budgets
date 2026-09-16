@@ -1,6 +1,6 @@
 // One-time demo data seeding — not a real app feature, just a convenience
 // for populating a dev/demo household with realistic-looking data instead
-// of an empty one. Triggered from HouseholdScreen's "Seed September Demo
+// of an empty one. Triggered from SettingsScreen's "Seed September Demo
 // Data" button, visible in `__DEV__` or to a household's OWNER (§5a role,
 // first put to use here). This can't run from a backend script:
 // category/transaction content is only ever encrypted client-side with
