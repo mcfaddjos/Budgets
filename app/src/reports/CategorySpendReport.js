@@ -1,19 +1,11 @@
 import { useMemo, useState } from "react";
-import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, StyleSheet, Text, View } from "react-native";
 import { useBudgetSummary } from "../data/queries";
 import { useTheme } from "../theme/ThemeContext";
 import { categoricalColor, otherColor, MAX_CATEGORICAL_SLOTS } from "../theme/chartColors";
+import { currentMonth, shiftMonth } from "./months";
 import Bar from "./Bar";
-
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7);
-}
-
-function shiftMonth(month, delta) {
-  const [y, m] = month.split("-").map(Number);
-  const d = new Date(y, m - 1 + delta, 1);
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-}
+import MonthNav from "./MonthNav";
 
 function formatMoney(amount) {
   return `$${Math.abs(amount).toFixed(0)}`;
@@ -44,15 +36,7 @@ export default function CategorySpendReport() {
 
   return (
     <View>
-      <View style={styles.monthRow}>
-        <TouchableOpacity onPress={() => setMonth((m) => shiftMonth(m, -1))} style={styles.monthArrow}>
-          <Text style={[styles.monthArrowText, { color: colors.accent }]}>‹</Text>
-        </TouchableOpacity>
-        <Text style={[styles.monthLabel, { color: colors.text }]}>{month}</Text>
-        <TouchableOpacity onPress={() => setMonth((m) => shiftMonth(m, 1))} style={styles.monthArrow}>
-          <Text style={[styles.monthArrowText, { color: colors.accent }]}>›</Text>
-        </TouchableOpacity>
-      </View>
+      <MonthNav month={month} onChange={(delta) => setMonth((m) => shiftMonth(m, delta))} />
 
       {isPending ? (
         <ActivityIndicator style={{ marginTop: 24 }} />
@@ -68,9 +52,5 @@ export default function CategorySpendReport() {
 }
 
 const styles = StyleSheet.create({
-  monthRow: { flexDirection: "row", alignItems: "center", justifyContent: "center", marginBottom: 20, gap: 20 },
-  monthArrow: { padding: 8 },
-  monthArrowText: { fontSize: 22, fontWeight: "700" },
-  monthLabel: { fontSize: 15, fontWeight: "700", minWidth: 80, textAlign: "center" },
   empty: { textAlign: "center", marginTop: 40 },
 });

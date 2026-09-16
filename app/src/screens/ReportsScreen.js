@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ScrollView, StyleSheet, View } from "react-native";
 import { useThemedStyles } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
 import { REPORTS } from "../reports/registry";
+import Chip from "../reports/Chip";
 
 /**
  * Shows exactly one report at a time (a picker chip row, not a dashboard
@@ -20,13 +21,7 @@ export default function ReportsScreen() {
     <View style={s.container}>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pickerRow}>
         {REPORTS.map((r) => (
-          <TouchableOpacity
-            key={r.id}
-            style={[s.chip, selectedId === r.id && s.chipActive]}
-            onPress={() => setSelectedId(r.id)}
-          >
-            <Text style={[s.chipText, selectedId === r.id && s.chipTextActive]}>{r.title}</Text>
-          </TouchableOpacity>
+          <Chip key={r.id} label={r.title} active={selectedId === r.id} onPress={() => setSelectedId(r.id)} />
         ))}
       </ScrollView>
 
@@ -39,17 +34,10 @@ export default function ReportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f7f8" },
-  pickerRow: { flexDirection: "row", gap: 8, padding: 16, paddingBottom: 8 },
-  chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 16, paddingHorizontal: 14, paddingVertical: 8 },
-  chipActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
-  chipText: { fontSize: 13, fontWeight: "600", color: "#333" },
-  chipTextActive: { color: "#fff" },
+  pickerRow: { flexDirection: "row", gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
   body: { padding: 16, paddingTop: 12 },
 });
 
 const darkStyles = {
   container: { backgroundColor: dark.bg },
-  chip: { borderColor: dark.border, backgroundColor: dark.chipBg },
-  chipActive: { backgroundColor: dark.accent, borderColor: dark.accent },
-  chipText: { color: dark.text },
 };

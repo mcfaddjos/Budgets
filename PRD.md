@@ -358,7 +358,7 @@ top bar.
   moved here from the standalone Household tab, which no longer exists —
   freeing that tab slot for Reports (§8.8).
 
-### 8.8 Reports (built, 2026-09-16 — first three of a larger catalog)
+### 8.8 Reports (built, 2026-09-16 — first four of a larger catalog)
 
 Replaces the old Household tab. Shows **one report at a time** (a picker
 chip row across the top), not a dashboard of everything at once — each
@@ -366,22 +366,30 @@ report is a self-contained component that owns its own data-fetching and
 its own settings/filters (a month, a category, a date range), so adding a
 new report is: write the component, add one line to
 `app/src/reports/registry.js`. The screen shell never needs to change.
+Shared pieces every report reuses rather than re-rolling its own —
+`Bar.js` (0-to-max horizontal bar), `LineChart.js` (SVG line, see below),
+`Chip.js` (picker/filter pill), `MonthNav.js` (prev/next month) — also
+means a sizing fix (chips and month-nav arrows were too large on first
+pass) only had to happen in one place each.
 
-**Charting approach**: plain `View`-based bars (width/height proportional
-to value), not a charting library — avoids adding a new native dependency
-for a first pass. Category colors come from a fixed 8-hue categorical
-palette (`app/src/theme/chartColors.js`), validated with the dataviz
-skill's six-check script against this app's actual light/dark card
-surfaces (worst-case adjacent CVD ΔE 9.1 light / 8.4 dark, both clear the
-≥8 target); a 9th+ category folds into "Other" rather than generating a
-new hue, per that skill's rule that categorical hues are never generated
-past a validated set. Real chart types (pie/donut, true line charts with
-hover) would need an actual charting library (`react-native-svg` +
-something built on it) — worth it once the report catalog below grows
-enough to justify the extra native dependency and rebuild it requires,
-not before.
+**Charting approach**: mostly plain `View`-based bars (width/height
+proportional to value) — no charting library needed for those. The one
+exception is the Day by Day report below, which needed an actual
+connected line, not a bar-per-point substitute; `react-native-svg` was
+added specifically for that (`LineChart.js`, a `Polyline` + zero-baseline
+`Line` + `Circle` markers) rather than for the whole reports system —
+still no full charting library, since a bare SVG primitive was enough for
+one line. Category colors come from a fixed 8-hue categorical palette
+(`app/src/theme/chartColors.js`), validated with the dataviz skill's
+six-check script against this app's actual light/dark card surfaces
+(worst-case adjacent CVD ΔE 9.1 light / 8.4 dark, both clear the ≥8
+target); a 9th+ category folds into "Other" rather than generating a new
+hue, per that skill's rule that categorical hues are never generated past
+a validated set. Richer chart types (pie/donut, hover/tooltips) would
+still need a real charting library built on `react-native-svg` — worth it
+once the report catalog below grows enough to justify it, not before.
 
-**Report catalog** — the three marked *(built)* ship now; the rest are
+**Report catalog** — the four marked *(built)* ship now; the rest are
 roadmap, added here so the catalog is visible before more get built:
 
 1. **Spending by Category** *(built)* — current month's spend per
@@ -394,12 +402,15 @@ roadmap, added here so the catalog is visible before more get built:
 3. **Category Spend Trend** *(built)* — one category's actual spend over
    the last 6 months as bars, with a category-chip picker as its setting
    (the "drill into one category" case named when this was scoped).
-4. **Category Budget Variance Ranking** *(roadmap)* — which categories
+4. **Day by Day Spending** *(built)* — a real connected line chart (not
+   bars) of net daily spend across a month, with prev/next month
+   navigation plus a "Whole Budget" vs. per-category chip picker as its
+   settings. Day-of-*week* clustering (does spending bunch up on
+   weekends) is a distinct, not-yet-built idea — this report is
+   day-of-*month* only for now.
+5. **Category Budget Variance Ranking** *(roadmap)* — which categories
    run over/under budget most consistently across months, ranked, not
    just a single month's snapshot.
-5. **Day-by-Day / Day-of-Week Spending Pattern** *(roadmap)* — the
-   "day by day" granularity named when this was scoped; e.g. does spending
-   cluster on weekends, or a particular day of the month.
 6. **Per-Person Spend Breakdown** *(roadmap)* — how much each household
    member entered, per category and in total (already a stated goal in
    §8.5/§7 story 8, not yet built as an actual report).
@@ -409,7 +420,7 @@ roadmap, added here so the catalog is visible before more get built:
 
 **Open questions for the roadmap reports above**: none are designed in
 detail yet — each will need its own pass at "what's the setting, what's
-the chart shape" the way the three built ones got, not just a title in
+the chart shape" the way the four built ones got, not just a title in
 this list.
 
 ## 9. Data Model (high level, post §5a/§5b household migration)
@@ -775,5 +786,5 @@ day one, cheap to set up now versus untangling later.
 - §10a: removing a household member doesn't yet revoke their previously-synced local access or rotate the household DEK — needs a design before a member-removal flow ships (not blocking today's 2-person trusted household).
 - **Leaving a household (§5c, raised 2026-09-16)**: same unresolved DEK-rotation gap as member removal above, plus whether re-joining later preserves old attribution, and whether "one household per user" is actually enforced anywhere.
 - **Platform-level admin (§5d, raised 2026-09-16)**: roadmap only, needs real conversation before design — how a cross-household admin role is modeled, what "manage" can even mean under §10a's zero-knowledge server, not scoped further than that on purpose.
-- **Reports roadmap (§8.8, raised 2026-09-16)**: 4 of 7 cataloged reports aren't built yet (budget variance ranking, day-by-day pattern, per-person breakdown, account breakdown) — each needs its own settings/chart-shape design pass before implementation, same as the three that shipped.
+- **Reports roadmap (§8.8, raised 2026-09-16)**: 3 of 7 cataloged reports aren't built yet (budget variance ranking, per-person breakdown, account breakdown; day-of-week clustering specifically, as distinct from the day-of-month report that shipped) — each needs its own settings/chart-shape design pass before implementation, same as the four that shipped.
 - **Passphrase-free unlock (§10c, decided/built 2026-09-16)**: device-bound secret ships for everyone; what's left is a real recovery-code redemption flow (doesn't exist at all today, needs new server-side key-material-replacement support too) and re-adding a biometric gate once there's a device matrix to test it against.

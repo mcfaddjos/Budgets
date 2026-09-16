@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
 import { useCategories, useMonthlyBudgetSummaries } from "../data/queries";
 import { useTheme } from "../theme/ThemeContext";
 import { lastNMonths, monthLabel } from "./months";
 import Bar from "./Bar";
+import Chip from "./Chip";
 
 const MONTHS_SHOWN = 6;
 
@@ -39,13 +40,7 @@ export default function CategoryTrendReport() {
     <View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
         {categories.map((c) => (
-          <TouchableOpacity
-            key={c.id}
-            style={[styles.chip, { borderColor: colors.border }, categoryId === c.id && { backgroundColor: colors.accent, borderColor: colors.accent }]}
-            onPress={() => setCategoryId(c.id)}
-          >
-            <Text style={[styles.chipText, { color: categoryId === c.id ? "#fff" : colors.text }]}>{c.name}</Text>
-          </TouchableOpacity>
+          <Chip key={c.id} label={c.name} active={categoryId === c.id} onPress={() => setCategoryId(c.id)} />
         ))}
       </ScrollView>
 
@@ -72,9 +67,7 @@ export default function CategoryTrendReport() {
 }
 
 const styles = StyleSheet.create({
-  chipRow: { flexDirection: "row", gap: 8, marginBottom: 20, paddingBottom: 4 },
-  chip: { borderWidth: 1, borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
-  chipText: { fontSize: 13, fontWeight: "600" },
+  chipRow: { flexDirection: "row", gap: 6, marginBottom: 18, paddingBottom: 4 },
   bars: { marginTop: 4 },
   empty: { textAlign: "center", marginTop: 40 },
 });
