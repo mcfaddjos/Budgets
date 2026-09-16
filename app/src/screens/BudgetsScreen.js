@@ -3,7 +3,9 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
   Modal,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -153,7 +155,11 @@ export default function BudgetsScreen() {
       )}
 
       <Modal visible={!!editing} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+        >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>Edit category</Text>
             <Text style={styles.label}>Name</Text>
@@ -175,7 +181,7 @@ export default function BudgetsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <Modal
@@ -184,7 +190,11 @@ export default function BudgetsScreen() {
         animationType="fade"
         onRequestClose={() => setAddCategoryVisible(false)}
       >
-        <View style={styles.modalBackdrop}>
+        <KeyboardAvoidingView
+          style={styles.modalBackdrop}
+          behavior={Platform.OS === "ios" ? "padding" : "height"}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+        >
           <View style={styles.modalCard}>
             <Text style={styles.modalTitle}>New category</Text>
             <TextInput
@@ -203,7 +213,7 @@ export default function BudgetsScreen() {
               </TouchableOpacity>
             </View>
           </View>
-        </View>
+        </KeyboardAvoidingView>
       </Modal>
 
       <AddTransactionModal

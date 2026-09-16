@@ -6,18 +6,11 @@ import {
   Modal,
   RefreshControl,
   StyleSheet,
-  Switch,
   Text,
   TouchableOpacity,
   View,
 } from "react-native";
-import {
-  useCategories,
-  useDeleteTransaction,
-  useRecategorizeTransaction,
-  useToggleReviewed,
-  useTransactions,
-} from "../data/queries";
+import { useCategories, useDeleteTransaction, useRecategorizeTransaction, useTransactions } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
 
 function currentMonth() {
@@ -33,7 +26,6 @@ export default function TransactionsScreen() {
   const month = currentMonth();
   const { data: transactions = [], isPending, isFetching, refetch } = useTransactions(month);
   const { data: categories = [] } = useCategories();
-  const toggleReviewed = useToggleReviewed();
   const recategorize = useRecategorizeTransaction();
   const deleteTransaction = useDeleteTransaction();
 
@@ -42,14 +34,6 @@ export default function TransactionsScreen() {
 
   function categoryName(categoryId) {
     return categories.find((c) => c.id === categoryId)?.name ?? "Uncategorized";
-  }
-
-  async function handleToggleReviewed(tx) {
-    try {
-      await toggleReviewed.mutateAsync(tx);
-    } catch (err) {
-      Alert.alert("Couldn't update transaction", err.message);
-    }
   }
 
   async function handlePickCategory(category) {
@@ -122,7 +106,6 @@ export default function TransactionsScreen() {
                   <Text style={styles.category}>{categoryName(item.categoryId)}</Text>
                 </TouchableOpacity>
               </View>
-              <Switch value={!!item.reviewed} onValueChange={() => handleToggleReviewed(item)} />
             </TouchableOpacity>
           )}
         />

@@ -1,7 +1,6 @@
 import { useState } from "react";
-import { KeyboardAvoidingView, Platform, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { KeyboardAvoidingView, Platform, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
-import MaskedPasswordInput from "../components/MaskedPasswordInput";
 
 /**
  * Shown when there's a valid backend session but the vault isn't unlocked
@@ -14,9 +13,6 @@ const DEV_DEFAULT_PASSPHRASE = __DEV__ ? "1234" : "";
 export default function UnlockScreen() {
   const { user, unlockVault, logout } = useAuth();
   const [vaultPassphrase, setVaultPassphrase] = useState(DEV_DEFAULT_PASSPHRASE);
-  // Now backed by MaskedPasswordInput's own overlay masking — see
-  // LoginScreen.js's note on why secureTextEntry itself isn't used.
-  const [showPassphrase, setShowPassphrase] = useState(false);
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
 
@@ -38,27 +34,21 @@ export default function UnlockScreen() {
         <Text style={styles.title}>Welcome back{user?.name ? `, ${user.name}` : ""}</Text>
         <Text style={styles.subtitle}>Enter your vault passphrase to unlock your household's data.</Text>
 
-        <View style={styles.passwordRow}>
-          <MaskedPasswordInput
-            style={[styles.input, styles.passwordInput]}
-            value={vaultPassphrase}
-            onChangeText={(text) => {
-              setVaultPassphrase(text);
-              setError(null);
-            }}
-            hidden={!showPassphrase}
-            placeholder="Vault passphrase"
-            autoCapitalize="none"
-            autoCorrect={false}
-            autoComplete="off"
-            importantForAutofill="no"
-            textContentType="none"
-            autoFocus
-          />
-          <TouchableOpacity style={styles.showButton} onPress={() => setShowPassphrase((v) => !v)}>
-            <Text style={styles.showButtonText}>{showPassphrase ? "Hide" : "Show"}</Text>
-          </TouchableOpacity>
-        </View>
+        <TextInput
+          style={styles.input}
+          value={vaultPassphrase}
+          onChangeText={(text) => {
+            setVaultPassphrase(text);
+            setError(null);
+          }}
+          placeholder="Vault passphrase"
+          autoCapitalize="none"
+          autoCorrect={false}
+          autoComplete="off"
+          importantForAutofill="no"
+          textContentType="none"
+          autoFocus
+        />
 
         {error ? <Text style={styles.error}>{error}</Text> : null}
 
@@ -79,8 +69,6 @@ const styles = StyleSheet.create({
   content: { flex: 1, justifyContent: "center", padding: 24 },
   title: { fontSize: 22, fontWeight: "700", textAlign: "center" },
   subtitle: { fontSize: 14, color: "#666", textAlign: "center", marginTop: 8, marginBottom: 28 },
-  passwordRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  passwordInput: { flex: 1 },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",
@@ -89,8 +77,6 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     fontSize: 16,
   },
-  showButton: { paddingHorizontal: 10, paddingVertical: 10 },
-  showButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
   error: { color: "#c0392b", marginTop: 16, textAlign: "center" },
   button: {
     backgroundColor: "#1a1a1a",

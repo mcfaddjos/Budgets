@@ -195,7 +195,9 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 
 ### 8.4 Reconciliation & Review
 - Dashboard view flagging: possible duplicates, uncategorized transactions, transactions over a user-set threshold, and transactions with no matching budget category.
-- "Mark reviewed" state per transaction so recurring review work is trackable.
+- **"Mark reviewed" state per transaction — pulled from the UI 2026-09-16, under discussion, not re-designed yet.** The per-row toggle shipped this session (§10a rewrite) but was pulled since it wasn't working as intended; the backend field/mutation are left in place, just nothing in the app surfaces it right now. Open questions before it comes back:
+  - What does "reviewed" actually mean for a two-person household — a per-user flag (each person tracks their own review pass) or a single shared flag either person can set?
+  - Should it live as an inline per-row toggle at all, or move into the §8.4 flagging dashboard (a bulk "review these N transactions" flow) instead of a control on every row?
 - Running reconciliation total per account (sum of imported transactions) that the user can sanity-check against the statement's stated balance.
 - A staleness warning when a manual-entry-only account hasn't had a statement import or manual entry in a while — Goodbudget's most-cited complaint (§12) is budgets silently "drifting" when manual entries get missed, and a shared household budget makes that worse (each person may assume the other is keeping it current).
 
@@ -508,6 +510,7 @@ day one, cheap to set up now versus untangling later.
 - Rollover is wanted as a **per-category option**, not a global setting — still open: how does a category switch modes, and what happens to an already-rolled-over balance if that category's flat amount later changes?
 - **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
 - **Custom one-off large-purchase budget (§8.3, raised 2026-09-16)**: does it live in the category/month budget model or as its own object, and does it count toward or sit outside the month's regular surplus/deficit total? Depends on how deficit rollover above is resolved.
+- **"Mark reviewed" (§8.4, pulled from the UI 2026-09-16)**: per-user or shared-per-household flag, and does it belong on every transaction row or only in a bulk review flow off the flagging dashboard?
 - Seasonal budgets already work manually (set a different amount for a category in a given month) — open: what does a reusable "recurring seasonal override" template actually look like (which months, which categories, does it auto-apply or just pre-fill for review)?
 - Monthly reports: archived snapshot per past month, or always recomputed live from current data? Affects whether a later edit to a past transaction should retroactively change an old month's report.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
