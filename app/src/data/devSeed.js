@@ -1,10 +1,11 @@
-// __DEV__-gated one-time demo data seeding — not a real app feature, just
-// a convenience for populating a dev/demo household with realistic-
-// looking data instead of an empty one. Triggered from HouseholdScreen's
-// dev-only "Seed September Demo Data" button. This can't run from a
-// backend script: category/transaction content is only ever encrypted
-// client-side with the household DEK (§10a), which never leaves the
-// device, so seeding has to happen through the app's own live session.
+// One-time demo data seeding — not a real app feature, just a convenience
+// for populating a dev/demo household with realistic-looking data instead
+// of an empty one. Triggered from HouseholdScreen's "Seed September Demo
+// Data" button, visible in `__DEV__` or to a household's OWNER (§5a role,
+// first put to use here). This can't run from a backend script:
+// category/transaction content is only ever encrypted client-side with
+// the household DEK (§10a), which never leaves the device, so seeding has
+// to happen through the app's own live session.
 //
 // Sourced from the real "Spend Less - Sept 2026.csv" export (an earlier
 // attempt to parse a pasted-into-chat version of this same sheet was

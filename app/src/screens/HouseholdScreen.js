@@ -14,7 +14,7 @@ const INVITE_EXPIRES_IN_DAYS = 7;
  * member to actually act from.
  */
 export default function HouseholdScreen() {
-  const { user, activeHouseholdId, createInvite, listPendingKeyGrants, grantAccessTo } = useAuth();
+  const { user, activeHouseholdId, isHouseholdOwner, createInvite, listPendingKeyGrants, grantAccessTo } = useAuth();
   const [pending, setPending] = useState([]);
   const [loadingPending, setLoadingPending] = useState(true);
   const [invite, setInvite] = useState(null);
@@ -133,12 +133,12 @@ export default function HouseholdScreen() {
         )}
       </View>
 
-      {__DEV__ ? (
+      {__DEV__ || isHouseholdOwner ? (
         <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Dev tools</Text>
+          <Text style={styles.sectionTitle}>Admin tools</Text>
           <Text style={styles.sectionHint}>
-            Never shown in a release build. Seeds this household with the real category names and
-            confidently-parseable transactions from the September spreadsheet.
+            Only visible to this household's owner. Seeds this household with the real category
+            names and confidently-parseable transactions from the September spreadsheet.
           </Text>
           <TouchableOpacity style={styles.button} onPress={handleSeedDemoData} disabled={seeding}>
             <Text style={styles.buttonText}>{seeding ? "Seeding…" : "Seed September Demo Data"}</Text>

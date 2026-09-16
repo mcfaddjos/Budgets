@@ -43,6 +43,11 @@ export function AuthProvider({ children }) {
   // show the "waiting for access" screen instead of the normal tabs.
   const activeHouseholdId = memberships.find((m) => session.hasHouseholdDek(m.householdId))?.householdId || null;
 
+  // First real use of the OWNER/MEMBER role from §5a — previously stored
+  // but never checked anywhere. A household's creator is always OWNER
+  // (see registerNewHousehold below); invited members are MEMBER.
+  const isHouseholdOwner = memberships.find((m) => m.householdId === activeHouseholdId)?.role === "OWNER";
+
   useEffect(() => {
     loadPersistedSession().then(async ({ serverUrl: url, token }) => {
       setServerUrlState(url);
@@ -285,6 +290,7 @@ export function AuthProvider({ children }) {
         user,
         memberships,
         activeHouseholdId,
+        isHouseholdOwner,
         unlocked,
         ready,
         serverUrl,

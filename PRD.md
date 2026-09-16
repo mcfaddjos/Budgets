@@ -149,13 +149,18 @@ New capabilities this implies, none of which exist today:
   does today (invite creation + the pending-access-grant handshake): seeing
   the current member list, and eventually acting on it.
 - **Explicitly deferred, kept simple for now**: real admin-vs-member
-  permissions. The schema already has an OWNER/MEMBER `role` (§5a), and
-  §5b already flagged this as an open question, but the backend today
-  still treats every member identically (`createInvite`'s own comment:
-  "any household member can invite for now"). This proposal doesn't change
-  that — no new role-gated behavior ships alongside "leave" or the
-  management screen. Role-based permissions (who can remove someone, who
-  can see what) stay a separate, later conversation.
+  permissions on household actions (invite creation, member removal, who
+  can see what). The backend still treats every member identically for
+  those (`createInvite`'s own comment: "any household member can invite
+  for now") — no proposal here to change that.
+- **First real use of the OWNER/MEMBER role (2026-09-16), outside that
+  deferral**: the household-seeding admin tool (`HouseholdScreen.js`,
+  `app/src/data/devSeed.js`) is now visible to a household's OWNER in a
+  release build too, not just `__DEV__` — since production doesn't have
+  the dev-only seed path available at all, and the creator of a household
+  is always its OWNER. Narrow and specific to this one tool, not a general
+  admin permissions system — the deferral above still stands for
+  everything else.
 - **Onboarding paths, confirmed as-is rather than changed**: creating a
   brand-new household stays the simple, unchanged flow it is today
   (`registerNewHousehold`); joining an *existing* household continues to
@@ -182,6 +187,29 @@ New capabilities this implies, none of which exist today:
   joining a second one while already a member elsewhere), or just a UI
   convention nothing stops a user from bypassing? A real enforcement point
   needs picking (registration/join time vs. a standing constraint).
+
+### 5d. Platform-level admin (future, raised 2026-09-16 — roadmap only, not designed)
+
+A **different, orthogonal role from OWNER/MEMBER above**: a platform admin
+(the app operator, i.e. the person running this) who can see/manage
+high-level information across *all* households and users, not just act
+within their own one household. §5a-§5c's OWNER role only ever grants
+authority inside a single household someone already belongs to — this is
+a separate axis entirely, closer to "who runs this app" than "who runs
+this household."
+
+**Deliberately not designed yet — flagged as needing real conversation
+before any of it gets built**, including basics like: what "manage" even
+means here given §10a (the server never holds a household's DEK, so a
+platform admin still can't see decrypted financial data no matter what
+role they hold — this can only ever be metadata-level: household/user
+counts, who exists, maybe usage/health signals, not "look inside a
+household's budget"); how a user gets flagged as a platform admin at all
+(a new, separate concept from `HouseholdMember.role`, not a bigger number
+on the same scale); and how this interacts with §5c's "one household per
+user" — a platform admin's own personal household membership presumably
+stays completely ordinary, with the admin capability layered on top as
+something unrelated, not a bigger membership.
 
 ## 6. Proof of Concept Scope
 
@@ -664,4 +692,5 @@ day one, cheap to set up now versus untangling later.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
 - §10a: removing a household member doesn't yet revoke their previously-synced local access or rotate the household DEK — needs a design before a member-removal flow ships (not blocking today's 2-person trusted household).
 - **Leaving a household (§5c, raised 2026-09-16)**: same unresolved DEK-rotation gap as member removal above, plus whether re-joining later preserves old attribution, and whether "one household per user" is actually enforced anywhere.
+- **Platform-level admin (§5d, raised 2026-09-16)**: roadmap only, needs real conversation before design — how a cross-household admin role is modeled, what "manage" can even mean under §10a's zero-knowledge server, not scoped further than that on purpose.
 - **Passphrase-free unlock (§10c, decided/built 2026-09-16)**: device-bound secret ships for everyone; what's left is a real recovery-code redemption flow (doesn't exist at all today, needs new server-side key-material-replacement support too) and re-adding a biometric gate once there's a device matrix to test it against.
