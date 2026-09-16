@@ -129,6 +129,60 @@ just more rows in the same tables, not a different data model.
   "create a new household" vs. "join a household via invite" — today's
   single undifferentiated register form doesn't distinguish these.
 
+### 5c. Single household per user, leaving, and household management (proposed, raised 2026-09-16, under discussion)
+
+Confirming and scoping a v1 simplification, explicitly called out so it
+doesn't get confused with a schema rollback: **the underlying data model
+stays exactly as §5b describes it** (membership is a join table, not a
+column, specifically so multi-household support needs no schema change
+later) — what's proposed here is a **product-level restriction**, enforced
+in the app/backend logic, that a given user only ever belongs to one
+household at a time in v1. Multi-household remains free to build later on
+the same schema; it's just not a v1 goal.
+
+New capabilities this implies, none of which exist today:
+
+- **Leaving a household.** There is currently no way to remove a
+  `HouseholdMember` row at all — once joined (create or invite), a member
+  is permanent. This needs a real "leave" action.
+- **A household management screen**, broader than what `HouseholdScreen.js`
+  does today (invite creation + the pending-access-grant handshake): seeing
+  the current member list, and eventually acting on it.
+- **Explicitly deferred, kept simple for now**: real admin-vs-member
+  permissions. The schema already has an OWNER/MEMBER `role` (§5a), and
+  §5b already flagged this as an open question, but the backend today
+  still treats every member identically (`createInvite`'s own comment:
+  "any household member can invite for now"). This proposal doesn't change
+  that — no new role-gated behavior ships alongside "leave" or the
+  management screen. Role-based permissions (who can remove someone, who
+  can see what) stay a separate, later conversation.
+- **Onboarding paths, confirmed as-is rather than changed**: creating a
+  brand-new household stays the simple, unchanged flow it is today
+  (`registerNewHousehold`); joining an *existing* household continues to
+  only ever happen via invite (`joinHouseholdViaInvite`) — there's no
+  proposal here to add any other way in. Worth stating explicitly as a
+  decision rather than leaving it as an unstated default.
+
+**Open questions, not designed yet:**
+
+- **Leaving is a UI action today, not a security boundary.** A member who
+  leaves still had the household DEK in memory and could have exported or
+  copied encrypted data before leaving — "leave" can only honestly mean
+  "stop syncing," not "revoke access retroactively," until DEK rotation on
+  membership changes is designed. This is the same unresolved problem
+  already logged for member *removal* in §10a/§15 — leaving is the
+  self-service version of the identical gap, not a separate one.
+- Can someone re-join a household later (a fresh invite) after leaving?
+  If so, does their old transaction/budget attribution (`createdByUserId`)
+  stay intact and visible, or does leaving sever that history somehow?
+- What happens to a household every member has left? Orphaned but intact,
+  or eventually deleted? Not urgent at today's 1-2 household scale, but
+  worth a stance before "leave" ships.
+- Is "one household per user" actually enforced (reject creating or
+  joining a second one while already a member elsewhere), or just a UI
+  convention nothing stops a user from bypassing? A real enforcement point
+  needs picking (registration/join time vs. a standing constraint).
+
 ## 6. Proof of Concept Scope
 
 The PoC's job is to prove the core loop end-to-end on a real phone: **log
@@ -370,6 +424,76 @@ To keep the app feeling instant regardless of backend cold-start behavior
 - This makes backend cold-starts mostly invisible on repeat app opens —
   only a genuinely first-ever launch (empty cache) waits on the network.
 
+### 10c. Passphrase-free invite join (proposed, raised 2026-09-16, under discussion)
+
+**Motivation**: inventing and typing a vault passphrase is real friction,
+and it's a strange ask specifically for someone being *invited* into a
+household that already exists — they aren't choosing a household-wide
+secret, they're just trying to get in. This is related to, but distinct
+from, the already-logged §10a/§15 question about a device *remembering*
+a passphrase you already chose — this is about an invited member never
+having to choose or type one in the first place. The same underlying
+mechanism could plausibly serve both, which is why they're cross-referenced
+rather than solved independently.
+
+**This must not quietly weaken §10a's core guarantee** — "the developer
+can't read household data even with full production database access" —
+whatever ships here needs to keep that true, explicitly, not by accident.
+Three candidate directions, from most to least compatible with that bar:
+
+1. **Device-bound key material.** Instead of deriving the vault-unlock key
+   from a memorized passphrase, generate/store it via the device's own
+   secure hardware (Android Keystore / iOS Keychain), gated by the
+   device's existing screen lock or biometrics. Preserves zero-server-
+   knowledge cleanly — the key material never leaves the device and the
+   server never sees or derives it. **Trade-off**: access becomes tied to
+   that specific device. Losing/resetting it with no recovery code means
+   losing access, and there's no more "type your passphrase on a second
+   device" path for that member — a real regression from today's model
+   unless a separate "add a new device" flow gets designed too (see open
+   questions below).
+2. **A secret embedded in the invite itself** (e.g., in a link's URL
+   fragment or a QR code), generated by the inviter, that the *server's*
+   invite record never stores or needs to see — only the inviter's and
+   invitee's apps ever handle it directly. Used as that member's
+   vault-unlock secret instead of something they invent. Preserves
+   zero-server-knowledge *if* the transport genuinely never touches the
+   backend (a URL fragment isn't sent in an HTTP request; a QR code scanned
+   device-to-device is naturally out-of-band) — this needs a concrete,
+   carefully-checked mechanism, not just an assumption that "the invite
+   link" is safe by default. Removes the invitee's typing/inventing burden
+   without permanently binding to one device the way option 1 does.
+3. **Household ID alone, no independent secret.** Flagged here specifically
+   to rule it out: a household ID is plaintext routing metadata the server
+   already knows by design (§10a) — if that alone were ever sufficient to
+   decrypt data, "the developer can't read data even with full DB access"
+   would stop being true. Not a real fourth option on its own; it only
+   becomes viable by pairing it with something the server never sees,
+   which is just option 2 again.
+
+**Current lean**: option 2 (secret-in-invite) looks most promising — it
+removes the friction for the invitee specifically without a permanent
+device-lock-in or a weakened guarantee — but it needs a concrete transport
+design before it's more than a direction.
+
+**Open questions before this is designed further:**
+
+- Does the household **creator** still use a memorized passphrase (there's
+  no inviter to hand them a secret), while invited members use one of the
+  above instead? An inconsistent model between creator and invitee needs
+  to be a deliberate choice, not an accidental side effect of solving only
+  the invite case.
+- How does the existing recovery-code mechanism (§10a) interact with a
+  device-bound secret (option 1) — does losing the device become exactly
+  today's "lost passphrase" scenario the recovery code already covers, or
+  does device-bound access need its own, separate recovery story?
+- **Multi-device support is currently implicit and needs to be named
+  explicitly**: today, typing the same passphrase unlocks the vault from
+  any device. Option 1 breaks that unless a separate "authorize a new
+  device for my own account" flow — conceptually similar to the existing
+  invite/grant handshake, but for one person's second device — gets built
+  too. Is that in scope now, or an explicitly accepted gap for v1?
+
 ## 11. Success Metrics
 
 - % of imported transactions auto-categorized correctly (target: >85% after ruleset matures).
@@ -520,3 +644,5 @@ day one, cheap to set up now versus untangling later.
 - Monthly reports: archived snapshot per past month, or always recomputed live from current data? Affects whether a later edit to a past transaction should retroactively change an old month's report.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
 - §10a: removing a household member doesn't yet revoke their previously-synced local access or rotate the household DEK — needs a design before a member-removal flow ships (not blocking today's 2-person trusted household).
+- **Leaving a household (§5c, raised 2026-09-16)**: same unresolved DEK-rotation gap as member removal above, plus whether re-joining later preserves old attribution, and whether "one household per user" is actually enforced anywhere.
+- **Passphrase-free invite join (§10c, raised 2026-09-16)**: device-bound key material vs. a secret embedded in the invite itself vs. household-ID-alone (ruled out) — and whether the household creator ends up on a different unlock model than invited members.
