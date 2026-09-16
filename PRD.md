@@ -6,7 +6,7 @@
 
 ## 1. Summary
 
-A budgeting tool for **two people sharing one household budget** — same
+A budgeting tool for **multiple people sharing one household budget** — same
 accounts, same transactions, same categories and budget targets, each
 person logging in with their own account so spending can be attributed to
 whoever entered it. It ingests bank statements — **credit cards are the
