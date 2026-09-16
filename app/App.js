@@ -1,8 +1,10 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Modal, StatusBar, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { SafeAreaProvider, SafeAreaView } from "react-native-safe-area-context";
 import { PersistQueryClientProvider } from "@tanstack/react-query-persist-client";
 import { AuthProvider, useAuth } from "./src/context/AuthContext";
+import { ThemeProvider, useTheme, useThemedStyles } from "./src/theme/ThemeContext";
+import { dark } from "./src/theme/palette";
 import { queryClient, asyncStoragePersister } from "./src/data/queryClient";
 import { usePrefetchHouseholdData } from "./src/data/queries";
 import LoginScreen from "./src/screens/LoginScreen";
@@ -12,6 +14,7 @@ import AccountsScreen from "./src/screens/AccountsScreen";
 import TransactionsScreen from "./src/screens/TransactionsScreen";
 import BudgetsScreen from "./src/screens/BudgetsScreen";
 import HouseholdScreen from "./src/screens/HouseholdScreen";
+import SettingsScreen from "./src/screens/SettingsScreen";
 import TabBar from "./src/components/TabBar";
 import RecoveryCodeModal from "./src/components/RecoveryCodeModal";
 import VersionFooter from "./src/components/VersionFooter";
@@ -28,8 +31,10 @@ const SCREENS = {
 };
 
 function MainApp() {
-  const { user, logout } = useAuth();
+  const { user } = useAuth();
   const [tab, setTab] = useState("budgets");
+  const [settingsVisible, setSettingsVisible] = useState(false);
+  const s = useThemedStyles(styles, darkStyles);
   const Screen = SCREENS[tab];
 
   // §10b: warm the cache for every tab as soon as the household is
@@ -43,11 +48,11 @@ function MainApp() {
   }, []);
 
   return (
-    <SafeAreaView style={styles.container}>
-      <View style={styles.topBar}>
-        <Text style={styles.greeting}>Hi, {user.name || user.email || "there"}</Text>
-        <TouchableOpacity onPress={logout}>
-          <Text style={styles.logout}>Log out</Text>
+    <SafeAreaView style={s.container}>
+      <View style={s.topBar}>
+        <Text style={s.greeting}>Hi, {user.name || user.email || "there"}</Text>
+        <TouchableOpacity onPress={() => setSettingsVisible(true)}>
+          <Text style={s.gear}>⚙</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.screen}>
@@ -55,6 +60,9 @@ function MainApp() {
       </View>
       <TabBar active={tab} onChange={setTab} />
       <RecoveryCodeModal />
+      <Modal visible={settingsVisible} animationType="slide" onRequestClose={() => setSettingsVisible(false)}>
+        <SettingsScreen onClose={() => setSettingsVisible(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -67,14 +75,16 @@ function MainApp() {
  */
 function LoadingScreen() {
   const [slow, setSlow] = useState(false);
+  const { colors } = useTheme();
+  const s = useThemedStyles(styles, darkStyles);
   useEffect(() => {
     const timer = setTimeout(() => setSlow(true), 4000);
     return () => clearTimeout(timer);
   }, []);
   return (
-    <View style={styles.loadingContainer}>
-      <ActivityIndicator size="large" color="#1a6ed8" />
-      <Text style={styles.loadingText}>
+    <View style={s.loadingContainer}>
+      <ActivityIndicator size="large" color={colors.accent} />
+      <Text style={s.loadingText}>
         {slow ? "Waking up the server — this can take up to a minute…" : "Loading…"}
       </Text>
     </View>
@@ -96,17 +106,24 @@ function Root() {
   return <MainApp />;
 }
 
+function ThemedStatusBar() {
+  const { scheme } = useTheme();
+  return <StatusBar barStyle={scheme === "dark" ? "light-content" : "dark-content"} />;
+}
+
 export default function App() {
   return (
     <SafeAreaProvider>
       <PersistQueryClientProvider client={queryClient} persistOptions={{ persister: asyncStoragePersister }}>
-        <AuthProvider>
-          <StatusBar barStyle="dark-content" />
-          <Root />
-          {/* Rendered once here, absolutely positioned, so it shows on every
-              screen (auth screens included) without threading it through each one. */}
-          <VersionFooter />
-        </AuthProvider>
+        <ThemeProvider>
+          <AuthProvider>
+            <ThemedStatusBar />
+            <Root />
+            {/* Rendered once here, absolutely positioned, so it shows on every
+                screen (auth screens included) without threading it through each one. */}
+            <VersionFooter />
+          </AuthProvider>
+        </ThemeProvider>
       </PersistQueryClientProvider>
     </SafeAreaProvider>
   );
@@ -127,5 +144,14 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
   },
   greeting: { fontSize: 15, fontWeight: "600" },
-  logout: { fontSize: 14, color: "#c0392b" },
+  gear: { fontSize: 20, color: "#1a1a1a" },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  loadingContainer: { backgroundColor: dark.bg },
+  loadingText: { color: dark.textMuted },
+  topBar: { backgroundColor: dark.card, borderBottomColor: dark.border },
+  greeting: { color: dark.text },
+  gear: { color: dark.text },
+};

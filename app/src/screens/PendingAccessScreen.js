@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /**
  * Shown after joining via invite (§10a): the account exists and is
@@ -14,6 +16,7 @@ export default function PendingAccessScreen() {
   const { refreshMemberships, logout } = useAuth();
   const [checking, setChecking] = useState(false);
   const [error, setError] = useState(null);
+  const s = useThemedStyles(styles, darkStyles);
 
   async function handleCheck() {
     setChecking(true);
@@ -28,22 +31,22 @@ export default function PendingAccessScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
       <ActivityIndicator size="large" />
-      <Text style={styles.title}>Waiting for access</Text>
-      <Text style={styles.subtitle}>
-        You're signed in, but another household member still needs to let you in from their own
-        device — this is a one-time step. Ask them to open the app and grant your access.
+      <Text style={s.title}>Waiting for access</Text>
+      <Text style={s.subtitle}>
+        You're signed in, but another household member still needs to let you in from their own device — this is a
+        one-time step. Ask them to open the app and grant your access.
       </Text>
 
-      {error ? <Text style={styles.error}>{error}</Text> : null}
+      {error ? <Text style={s.error}>{error}</Text> : null}
 
-      <TouchableOpacity style={styles.button} onPress={handleCheck} disabled={checking}>
-        <Text style={styles.buttonText}>{checking ? "Checking…" : "Check now"}</Text>
+      <TouchableOpacity style={s.button} onPress={handleCheck} disabled={checking}>
+        <Text style={s.buttonText}>{checking ? "Checking…" : "Check now"}</Text>
       </TouchableOpacity>
 
-      <TouchableOpacity style={styles.linkButton} onPress={logout}>
-        <Text style={styles.linkText}>Log out</Text>
+      <TouchableOpacity style={s.linkButton} onPress={logout}>
+        <Text style={s.linkText}>Log out</Text>
       </TouchableOpacity>
     </View>
   );
@@ -65,3 +68,12 @@ const styles = StyleSheet.create({
   linkButton: { marginTop: 20 },
   linkText: { color: "#999", fontSize: 14 },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  title: { color: dark.text },
+  subtitle: { color: dark.textMuted },
+  error: { color: dark.danger },
+  button: { backgroundColor: dark.accent },
+  linkText: { color: dark.textFaint },
+};

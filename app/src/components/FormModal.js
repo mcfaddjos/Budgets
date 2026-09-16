@@ -1,4 +1,6 @@
 import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, View } from "react-native";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /**
  * Shared shell for every popup/form in the app — a dimmed backdrop
@@ -24,17 +26,15 @@ import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, View } f
  */
 export default function FormModal({ visible, onClose, children, variant = "dialog" }) {
   const isSheet = variant === "sheet";
+  const s = useThemedStyles(styles, darkStyles);
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.backdrop}
-        behavior={Platform.OS === "ios" ? "padding" : undefined}
-      >
+      <KeyboardAvoidingView style={s.backdrop} behavior={Platform.OS === "ios" ? "padding" : undefined}>
         <ScrollView
-          contentContainerStyle={[styles.scrollContent, isSheet && styles.scrollContentSheet]}
+          contentContainerStyle={[s.scrollContent, isSheet && s.scrollContentSheet]}
           keyboardShouldPersistTaps="handled"
         >
-          <View style={[styles.card, isSheet && styles.cardSheet]}>{children}</View>
+          <View style={[s.card, isSheet && s.cardSheet]}>{children}</View>
         </ScrollView>
       </KeyboardAvoidingView>
     </Modal>
@@ -48,3 +48,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: "#fff", borderRadius: 12, padding: 20 },
   cardSheet: { borderRadius: 0, borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16 },
 });
+
+const darkStyles = {
+  card: { backgroundColor: dark.card },
+  cardSheet: { backgroundColor: dark.card },
+};

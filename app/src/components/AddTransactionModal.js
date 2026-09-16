@@ -2,6 +2,8 @@ import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useCreateManualTransaction, useTransactionFormOptions } from "../data/queries";
 import FormModal from "./FormModal";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
@@ -18,6 +20,7 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(null);
+  const s = useThemedStyles(styles, darkStyles);
 
   useEffect(() => {
     if (visible) {
@@ -64,33 +67,33 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
 
   return (
     <FormModal visible={visible} onClose={onClose}>
-      <Text style={styles.modalTitle}>Add transaction</Text>
+      <Text style={s.modalTitle}>Add transaction</Text>
 
       {isPending ? (
-        <View style={styles.loadingBox}>
+        <View style={s.loadingBox}>
           <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading accounts and categories…</Text>
+          <Text style={s.loadingText}>Loading accounts and categories…</Text>
         </View>
       ) : isError ? (
-        <View style={styles.loadingBox}>
-          <Text style={styles.errorText}>{error.message}</Text>
-          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
-            <Text style={styles.retryButtonText}>Retry</Text>
+        <View style={s.loadingBox}>
+          <Text style={s.errorText}>{error.message}</Text>
+          <TouchableOpacity style={s.retryButton} onPress={refetch}>
+            <Text style={s.retryButtonText}>Retry</Text>
           </TouchableOpacity>
         </View>
       ) : (
         <>
           {accounts.length > 1 ? (
             <>
-              <Text style={styles.label}>Account</Text>
-              <View style={styles.chipRow}>
+              <Text style={s.label}>Account</Text>
+              <View style={s.chipRow}>
                 {accounts.map((a) => (
                   <TouchableOpacity
                     key={a.id}
-                    style={[styles.chip, accountId === a.id && styles.chipActive]}
+                    style={[s.chip, accountId === a.id && s.chipActive]}
                     onPress={() => setAccountId(a.id)}
                   >
-                    <Text style={[styles.chipText, accountId === a.id && styles.chipTextActive]}>{a.name}</Text>
+                    <Text style={[s.chipText, accountId === a.id && s.chipTextActive]}>{a.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
@@ -98,31 +101,31 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
           ) : null}
 
           <TextInput
-            style={styles.input}
+            style={s.input}
             value={amount}
             onChangeText={setAmount}
             keyboardType="decimal-pad"
             placeholder="Amount (e.g. 12.50)"
           />
           <TextInput
-            style={styles.input}
+            style={s.input}
             value={description}
             onChangeText={setDescription}
             placeholder="Description (optional)"
           />
 
-          <Text style={styles.label}>Category</Text>
+          <Text style={s.label}>Category</Text>
           {categories.length === 0 ? (
-            <Text style={styles.empty}>No categories yet.</Text>
+            <Text style={s.empty}>No categories yet.</Text>
           ) : (
-            <View style={styles.chipRow}>
+            <View style={s.chipRow}>
               {categories.map((c) => (
                 <TouchableOpacity
                   key={c.id}
-                  style={[styles.chip, categoryId === c.id && styles.chipActive]}
+                  style={[s.chip, categoryId === c.id && s.chipActive]}
                   onPress={() => setCategoryId(c.id)}
                 >
-                  <Text style={[styles.chipText, categoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                  <Text style={[s.chipText, categoryId === c.id && s.chipTextActive]}>{c.name}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -130,16 +133,16 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
         </>
       )}
 
-      <View style={styles.formActions}>
-        <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
-          <Text style={styles.secondaryButtonText}>Cancel</Text>
+      <View style={s.formActions}>
+        <TouchableOpacity style={s.secondaryButton} onPress={onClose}>
+          <Text style={s.secondaryButtonText}>Cancel</Text>
         </TouchableOpacity>
         <TouchableOpacity
-          style={styles.primaryButton}
+          style={s.primaryButton}
           onPress={handleSave}
           disabled={createTransaction.isPending || isPending || isError}
         >
-          <Text style={styles.primaryButtonText}>{createTransaction.isPending ? "Saving…" : "Save"}</Text>
+          <Text style={s.primaryButtonText}>{createTransaction.isPending ? "Saving…" : "Save"}</Text>
         </TouchableOpacity>
       </View>
     </FormModal>
@@ -181,3 +184,18 @@ const styles = StyleSheet.create({
   secondaryButton: { paddingVertical: 10, paddingHorizontal: 18 },
   secondaryButtonText: { color: "#666" },
 });
+
+const darkStyles = {
+  modalTitle: { color: dark.text },
+  label: { color: dark.text },
+  input: { borderColor: dark.border, color: dark.text, backgroundColor: dark.bgAlt },
+  chip: { borderColor: dark.border, backgroundColor: dark.chipBg },
+  chipActive: { backgroundColor: dark.accent, borderColor: dark.accent },
+  chipText: { color: dark.text },
+  empty: { color: dark.textMuted },
+  loadingText: { color: dark.textMuted },
+  errorText: { color: dark.danger },
+  retryButtonText: { color: dark.accent },
+  primaryButton: { backgroundColor: dark.accent },
+  secondaryButtonText: { color: dark.textMuted },
+};

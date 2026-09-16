@@ -13,6 +13,8 @@ import {
 import { useBudgetSummary, useCreateCategory, useSetBudget, useUpdateCategory } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
 import FormModal from "../components/FormModal";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -41,6 +43,7 @@ export default function BudgetsScreen() {
   const [addCategoryVisible, setAddCategoryVisible] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
   const [savingCategory, setSavingCategory] = useState(false);
+  const s = useThemedStyles(styles, darkStyles);
 
   function openEditor(category) {
     setEditing(category);
@@ -92,56 +95,57 @@ export default function BudgetsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.summary}>
-        <Text style={styles.summaryLabel}>{month}</Text>
-        <View style={styles.summaryRow}>
-          <SummaryStat label="Budgeted" value={formatMoney(totals.budget)} />
-          <SummaryStat label="Spent" value={formatMoney(totals.actual)} />
+    <View style={s.container}>
+      <View style={s.summary}>
+        <Text style={s.summaryLabel}>{month}</Text>
+        <View style={s.summaryRow}>
+          <SummaryStat label="Budgeted" value={formatMoney(totals.budget)} s={s} />
+          <SummaryStat label="Spent" value={formatMoney(totals.actual)} s={s} />
           <SummaryStat
             label="Left"
             value={formatMoney(totals.variance)}
             color={totals.variance < 0 ? "#c0392b" : "#2a8a4a"}
+            s={s}
           />
         </View>
-        <View style={styles.summaryActions}>
-          <TouchableOpacity style={styles.addButton} onPress={() => setAddTxVisible(true)}>
-            <Text style={styles.addButtonText}>+ Add Transaction</Text>
+        <View style={s.summaryActions}>
+          <TouchableOpacity style={s.addButton} onPress={() => setAddTxVisible(true)}>
+            <Text style={s.addButtonText}>+ Add Transaction</Text>
           </TouchableOpacity>
         </View>
       </View>
 
       {isPending ? (
-        <View style={styles.loadingBox}>
+        <View style={s.loadingBox}>
           <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading budgets…</Text>
+          <Text style={s.loadingText}>Loading budgets…</Text>
         </View>
       ) : (
         <FlatList
           data={categories}
           keyExtractor={(item) => String(item.categoryId)}
           refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
-          contentContainerStyle={styles.list}
+          contentContainerStyle={s.list}
           ListFooterComponent={
-            <TouchableOpacity style={styles.addCategoryButton} onPress={() => setAddCategoryVisible(true)}>
-              <Text style={styles.addCategoryButtonText}>+ Add Category</Text>
+            <TouchableOpacity style={s.addCategoryButton} onPress={() => setAddCategoryVisible(true)}>
+              <Text style={s.addCategoryButtonText}>+ Add Category</Text>
             </TouchableOpacity>
           }
           renderItem={({ item }) => {
             const pct = item.budgetAmount > 0 ? Math.min(item.actual / item.budgetAmount, 1) : 0;
             const over = item.budgetAmount > 0 && item.actual > item.budgetAmount;
             return (
-              <TouchableOpacity style={styles.card} onPress={() => openEditor(item)}>
-                <View style={styles.cardHeader}>
-                  <Text style={styles.cardTitle}>{item.categoryName}</Text>
-                  <Text style={styles.cardAmounts}>
+              <TouchableOpacity style={s.card} onPress={() => openEditor(item)}>
+                <View style={s.cardHeader}>
+                  <Text style={s.cardTitle}>{item.categoryName}</Text>
+                  <Text style={s.cardAmounts}>
                     {formatMoney(item.actual)} / {formatMoney(item.budgetAmount)}
                   </Text>
                 </View>
-                <View style={styles.progressTrack}>
+                <View style={s.progressTrack}>
                   <View
                     style={[
-                      styles.progressFill,
+                      s.progressFill,
                       { width: `${pct * 100}%`, backgroundColor: over ? "#c0392b" : "#1a6ed8" },
                     ]}
                   />
@@ -153,42 +157,42 @@ export default function BudgetsScreen() {
       )}
 
       <FormModal visible={!!editing} onClose={() => setEditing(null)}>
-        <Text style={styles.modalTitle}>Edit category</Text>
-        <Text style={styles.label}>Name</Text>
-        <TextInput style={styles.input} value={nameInput} onChangeText={setNameInput} placeholder="Category name" />
-        <Text style={styles.label}>Budget</Text>
+        <Text style={s.modalTitle}>Edit category</Text>
+        <Text style={s.label}>Name</Text>
+        <TextInput style={s.input} value={nameInput} onChangeText={setNameInput} placeholder="Category name" />
+        <Text style={s.label}>Budget</Text>
         <TextInput
-          style={styles.input}
+          style={s.input}
           value={amountInput}
           onChangeText={setAmountInput}
           keyboardType="decimal-pad"
           placeholder="0.00"
         />
-        <View style={styles.modalActions}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setEditing(null)}>
-            <Text style={styles.secondaryButtonText}>Cancel</Text>
+        <View style={s.modalActions}>
+          <TouchableOpacity style={s.secondaryButton} onPress={() => setEditing(null)}>
+            <Text style={s.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={handleSaveBudget} disabled={savingBudget}>
-            <Text style={styles.primaryButtonText}>{savingBudget ? "Saving…" : "Save"}</Text>
+          <TouchableOpacity style={s.primaryButton} onPress={handleSaveBudget} disabled={savingBudget}>
+            <Text style={s.primaryButtonText}>{savingBudget ? "Saving…" : "Save"}</Text>
           </TouchableOpacity>
         </View>
       </FormModal>
 
       <FormModal visible={addCategoryVisible} onClose={() => setAddCategoryVisible(false)}>
-        <Text style={styles.modalTitle}>New category</Text>
+        <Text style={s.modalTitle}>New category</Text>
         <TextInput
-          style={styles.input}
+          style={s.input}
           value={newCategoryName}
           onChangeText={setNewCategoryName}
           placeholder="e.g. Presents"
           autoFocus
         />
-        <View style={styles.modalActions}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddCategoryVisible(false)}>
-            <Text style={styles.secondaryButtonText}>Cancel</Text>
+        <View style={s.modalActions}>
+          <TouchableOpacity style={s.secondaryButton} onPress={() => setAddCategoryVisible(false)}>
+            <Text style={s.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={handleAddCategory} disabled={savingCategory}>
-            <Text style={styles.primaryButtonText}>{savingCategory ? "Saving…" : "Save"}</Text>
+          <TouchableOpacity style={s.primaryButton} onPress={handleAddCategory} disabled={savingCategory}>
+            <Text style={s.primaryButtonText}>{savingCategory ? "Saving…" : "Save"}</Text>
           </TouchableOpacity>
         </View>
       </FormModal>
@@ -202,11 +206,11 @@ export default function BudgetsScreen() {
   );
 }
 
-function SummaryStat({ label, value, color }) {
+function SummaryStat({ label, value, color, s }) {
   return (
-    <View style={styles.stat}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={[styles.statValue, color ? { color } : null]}>{value}</Text>
+    <View style={s.stat}>
+      <Text style={s.statLabel}>{label}</Text>
+      <Text style={[s.statValue, color ? { color } : null]}>{value}</Text>
     </View>
   );
 }
@@ -263,3 +267,24 @@ const styles = StyleSheet.create({
   secondaryButton: { paddingVertical: 10, paddingHorizontal: 18 },
   secondaryButtonText: { color: "#666" },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  summary: { backgroundColor: dark.card, borderBottomColor: dark.border },
+  summaryLabel: { color: dark.textMuted },
+  loadingText: { color: dark.textMuted },
+  addButton: { backgroundColor: dark.accent },
+  statLabel: { color: dark.textFaint },
+  statValue: { color: dark.text },
+  card: { backgroundColor: dark.card },
+  cardTitle: { color: dark.text },
+  cardAmounts: { color: dark.textMuted },
+  progressTrack: { backgroundColor: dark.border },
+  addCategoryButton: { borderColor: dark.accent },
+  addCategoryButtonText: { color: dark.accent },
+  modalTitle: { color: dark.text },
+  label: { color: dark.text },
+  input: { borderColor: dark.border, color: dark.text, backgroundColor: dark.bgAlt },
+  primaryButton: { backgroundColor: dark.accent },
+  secondaryButtonText: { color: dark.textMuted },
+};

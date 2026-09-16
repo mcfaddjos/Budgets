@@ -1,4 +1,6 @@
 import { StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 const TABS = [
   { key: "accounts", label: "Accounts" },
@@ -8,11 +10,12 @@ const TABS = [
 ];
 
 export default function TabBar({ active, onChange }) {
+  const s = useThemedStyles(styles, darkStyles);
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
       {TABS.map((tab) => (
-        <TouchableOpacity key={tab.key} style={styles.tab} onPress={() => onChange(tab.key)}>
-          <Text style={[styles.label, active === tab.key && styles.labelActive]}>{tab.label}</Text>
+        <TouchableOpacity key={tab.key} style={s.tab} onPress={() => onChange(tab.key)}>
+          <Text style={[s.label, active === tab.key && s.labelActive]}>{tab.label}</Text>
         </TouchableOpacity>
       ))}
     </View>
@@ -31,3 +34,9 @@ const styles = StyleSheet.create({
   label: { fontSize: 13, color: "#999", fontWeight: "600" },
   labelActive: { color: "#1a6ed8" },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.card, borderTopColor: dark.border },
+  label: { color: dark.textFaint },
+  labelActive: { color: dark.accent },
+};

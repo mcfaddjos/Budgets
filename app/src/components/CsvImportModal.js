@@ -7,6 +7,8 @@ import { useAuth } from "../context/AuthContext";
 import { useCategories } from "../data/queries";
 import * as repo from "../data/repo";
 import { parseCsv, validateRow, TEMPLATE_TEXT } from "../data/csv";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /** Native: read via expo-file-system. Web: DocumentPicker's asset carries a real browser File. */
 async function readPickedFileAsText(file) {
@@ -33,6 +35,7 @@ export default function CsvImportModal({ visible, accountId, onClose, onImported
   const [parsing, setParsing] = useState(false);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState(null);
+  const s = useThemedStyles(styles, darkStyles);
 
   function reset() {
     setRows(null);
@@ -107,70 +110,68 @@ export default function CsvImportModal({ visible, accountId, onClose, onImported
 
   return (
     <Modal visible={visible} transparent animationType="slide" onRequestClose={handleClose}>
-      <View style={styles.modalBackdrop}>
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Import from CSV</Text>
+      <View style={s.modalBackdrop}>
+        <View style={s.modalCard}>
+          <Text style={s.modalTitle}>Import from CSV</Text>
 
           {!rows ? (
             <>
-              <Text style={styles.label}>Expected format (column order doesn't matter):</Text>
-              <View style={styles.templateBox}>
-                <Text style={styles.templateText} selectable>
+              <Text style={s.label}>Expected format (column order doesn't matter):</Text>
+              <View style={s.templateBox}>
+                <Text style={s.templateText} selectable>
                   {TEMPLATE_TEXT}
                 </Text>
               </View>
-              <Text style={styles.hint}>
-                Amount is positive for money spent, negative for a refund/credit. Category must
-                match an existing category name exactly (not case-sensitive) — rows with an unknown
-                category are skipped, not guessed at.
+              <Text style={s.hint}>
+                Amount is positive for money spent, negative for a refund/credit. Category must match an existing
+                category name exactly (not case-sensitive) — rows with an unknown category are skipped, not guessed
+                at.
               </Text>
 
-              {error ? <Text style={styles.errorText}>{error}</Text> : null}
+              {error ? <Text style={s.errorText}>{error}</Text> : null}
 
-              <TouchableOpacity style={styles.primaryButton} onPress={handlePickFile} disabled={parsing}>
-                <Text style={styles.primaryButtonText}>{parsing ? "Reading…" : "Choose CSV File"}</Text>
+              <TouchableOpacity style={s.primaryButton} onPress={handlePickFile} disabled={parsing}>
+                <Text style={s.primaryButtonText}>{parsing ? "Reading…" : "Choose CSV File"}</Text>
               </TouchableOpacity>
             </>
           ) : (
             <>
-              <Text style={styles.label}>{fileName}</Text>
-              <Text style={styles.summary}>
+              <Text style={s.label}>{fileName}</Text>
+              <Text style={s.summary}>
                 {rows.length} row(s) found — {validCount} ready to import
                 {invalidRows.length > 0 ? `, ${invalidRows.length} will be skipped` : ""}.
               </Text>
 
               {invalidRows.length > 0 ? (
-                <ScrollView style={styles.errorList}>
+                <ScrollView style={s.errorList}>
                   {invalidRows.slice(0, 10).map((r, i) => (
-                    <Text key={i} style={styles.errorRow}>
+                    <Text key={i} style={s.errorRow}>
                       Row {i + 1}: {r.errors.join(", ")}
                     </Text>
                   ))}
                   {invalidRows.length > 10 ? (
-                    <Text style={styles.errorRow}>…and {invalidRows.length - 10} more.</Text>
+                    <Text style={s.errorRow}>…and {invalidRows.length - 10} more.</Text>
                   ) : null}
                 </ScrollView>
               ) : null}
 
-              <TouchableOpacity style={styles.secondaryButton} onPress={reset}>
-                <Text style={styles.secondaryButtonText}>Choose a different file</Text>
+              <TouchableOpacity style={s.secondaryButton} onPress={reset}>
+                <Text style={s.secondaryButtonText}>Choose a different file</Text>
               </TouchableOpacity>
             </>
           )}
 
-          <View style={styles.formActions}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={handleClose}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
+          <View style={s.formActions}>
+            <TouchableOpacity style={s.secondaryButton} onPress={handleClose}>
+              <Text style={s.secondaryButtonText}>Cancel</Text>
             </TouchableOpacity>
             {rows ? (
               <TouchableOpacity
-                style={styles.primaryButton}
+                style={s.primaryButton}
                 onPress={handleConfirmImport}
                 disabled={importing || validCount === 0}
               >
-                <Text style={styles.primaryButtonText}>
-                  {importing ? "Importing…" : `Import ${validCount}`}
-                </Text>
+                <Text style={s.primaryButtonText}>{importing ? "Importing…" : `Import ${validCount}`}</Text>
               </TouchableOpacity>
             ) : null}
           </View>
@@ -198,3 +199,17 @@ const styles = StyleSheet.create({
   secondaryButton: { paddingVertical: 10, paddingHorizontal: 18 },
   secondaryButtonText: { color: "#666" },
 });
+
+const darkStyles = {
+  modalCard: { backgroundColor: dark.card },
+  modalTitle: { color: dark.text },
+  label: { color: dark.text },
+  templateBox: { backgroundColor: dark.bgAlt },
+  templateText: { color: dark.text },
+  hint: { color: dark.textFaint },
+  summary: { color: dark.text },
+  errorRow: { color: dark.danger },
+  errorText: { color: dark.danger },
+  primaryButton: { backgroundColor: dark.accent },
+  secondaryButtonText: { color: dark.textMuted },
+};

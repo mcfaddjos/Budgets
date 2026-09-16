@@ -11,6 +11,8 @@ import {
   View,
 } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /** Resolves true (use defaults) / false (start empty) — never rejects, "Add My Own" is a legitimate choice, not a cancellation. */
 function askUseDefaultCategories() {
@@ -32,6 +34,7 @@ export default function LoginScreen() {
   const [inviteCode, setInviteCode] = useState("");
   const [error, setError] = useState(null);
   const [busy, setBusy] = useState(false);
+  const s = useThemedStyles(styles, darkStyles);
 
   async function handleSubmit() {
     setError(null);
@@ -63,44 +66,40 @@ export default function LoginScreen() {
 
   return (
     <KeyboardAvoidingView
-      style={styles.container}
+      style={s.container}
       behavior={Platform.OS === "ios" ? "padding" : "height"}
       keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
     >
-      <ScrollView contentContainerStyle={styles.scroll} keyboardShouldPersistTaps="handled">
-        <Text style={styles.title}>Budgets</Text>
-        <Text style={styles.subtitle}>Credit card spend, categorized and budgeted.</Text>
+      <ScrollView contentContainerStyle={s.scroll} keyboardShouldPersistTaps="handled">
+        <Text style={s.title}>Budgets</Text>
+        <Text style={s.subtitle}>Credit card spend, categorized and budgeted.</Text>
 
-        <View style={styles.modeRow}>
+        <View style={s.modeRow}>
           <TouchableOpacity
-            style={[styles.modeButton, mode === "login" && styles.modeButtonActive]}
+            style={[s.modeButton, mode === "login" && s.modeButtonActive]}
             onPress={() => setMode("login")}
           >
-            <Text style={[styles.modeButtonText, mode === "login" && styles.modeButtonTextActive]}>Log In</Text>
+            <Text style={[s.modeButtonText, mode === "login" && s.modeButtonTextActive]}>Log In</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeButton, mode === "create" && styles.modeButtonActive]}
+            style={[s.modeButton, mode === "create" && s.modeButtonActive]}
             onPress={() => setMode("create")}
           >
-            <Text style={[styles.modeButtonText, mode === "create" && styles.modeButtonTextActive]}>
-              New household
-            </Text>
+            <Text style={[s.modeButtonText, mode === "create" && s.modeButtonTextActive]}>New household</Text>
           </TouchableOpacity>
           <TouchableOpacity
-            style={[styles.modeButton, mode === "join" && styles.modeButtonActive]}
+            style={[s.modeButton, mode === "join" && s.modeButtonActive]}
             onPress={() => setMode("join")}
           >
-            <Text style={[styles.modeButtonText, mode === "join" && styles.modeButtonTextActive]}>
-              Join with invite
-            </Text>
+            <Text style={[s.modeButtonText, mode === "join" && s.modeButtonTextActive]}>Join with invite</Text>
           </TouchableOpacity>
         </View>
 
         {mode === "join" ? (
           <>
-            <Text style={styles.label}>Invite Code</Text>
+            <Text style={s.label}>Invite Code</Text>
             <TextInput
-              style={styles.input}
+              style={s.input}
               value={inviteCode}
               onChangeText={(text) => {
                 setInviteCode(text);
@@ -113,7 +112,7 @@ export default function LoginScreen() {
           </>
         ) : null}
 
-        <Text style={styles.helpText}>
+        <Text style={s.helpText}>
           {mode === "login"
             ? "Unlocks automatically using this device — no passphrase needed."
             : mode === "create"
@@ -121,12 +120,10 @@ export default function LoginScreen() {
               : "Your access is set up automatically using a key generated and stored securely on this device — no passphrase to invent or remember."}
         </Text>
 
-        {error ? <Text style={styles.error}>{error}</Text> : null}
+        {error ? <Text style={s.error}>{error}</Text> : null}
 
-        <TouchableOpacity style={styles.button} onPress={handleSubmit} disabled={busy}>
-          <Text style={styles.buttonText}>
-            {busy ? "Please wait…" : "Continue with Google"}
-          </Text>
+        <TouchableOpacity style={s.button} onPress={handleSubmit} disabled={busy}>
+          <Text style={s.buttonText}>{busy ? "Please wait…" : "Continue with Google"}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -170,3 +167,17 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  title: { color: dark.text },
+  subtitle: { color: dark.textMuted },
+  modeButton: { borderColor: dark.border },
+  modeButtonActive: { backgroundColor: dark.accent, borderColor: dark.accent },
+  modeButtonText: { color: dark.text },
+  label: { color: dark.text },
+  helpText: { color: dark.textFaint },
+  input: { borderColor: dark.border, color: dark.text, backgroundColor: dark.card },
+  error: { color: dark.danger },
+  button: { backgroundColor: dark.accent },
+};

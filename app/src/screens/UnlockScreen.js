@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { ActivityIndicator, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useTheme, useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /**
  * §10c: unlocking is automatic now (this device's own stored secret, no
@@ -13,6 +15,8 @@ export default function UnlockScreen() {
   const { user, unlockError, unlockVault, logout } = useAuth();
   const [busy, setBusy] = useState(false);
   const [retryError, setRetryError] = useState(null);
+  const { colors } = useTheme();
+  const s = useThemedStyles(styles, darkStyles);
 
   async function handleRetry() {
     setRetryError(null);
@@ -27,21 +31,21 @@ export default function UnlockScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.content}>
-        <Text style={styles.title}>Welcome back{user?.name ? `, ${user.name}` : ""}</Text>
+    <View style={s.container}>
+      <View style={s.content}>
+        <Text style={s.title}>Welcome back{user?.name ? `, ${user.name}` : ""}</Text>
         {busy ? (
-          <ActivityIndicator size="large" color="#1a6ed8" style={styles.spinner} />
+          <ActivityIndicator size="large" color={colors.accent} style={s.spinner} />
         ) : (
-          <Text style={styles.error}>{retryError || unlockError}</Text>
+          <Text style={s.error}>{retryError || unlockError}</Text>
         )}
 
-        <TouchableOpacity style={styles.button} onPress={handleRetry} disabled={busy}>
-          <Text style={styles.buttonText}>{busy ? "Unlocking…" : "Try again"}</Text>
+        <TouchableOpacity style={s.button} onPress={handleRetry} disabled={busy}>
+          <Text style={s.buttonText}>{busy ? "Unlocking…" : "Try again"}</Text>
         </TouchableOpacity>
 
-        <TouchableOpacity style={styles.linkButton} onPress={logout}>
-          <Text style={styles.linkText}>Not you? Log out</Text>
+        <TouchableOpacity style={s.linkButton} onPress={logout}>
+          <Text style={s.linkText}>Not you? Log out</Text>
         </TouchableOpacity>
       </View>
     </View>
@@ -65,3 +69,11 @@ const styles = StyleSheet.create({
   linkButton: { marginTop: 20, alignItems: "center" },
   linkText: { color: "#1a6ed8", fontSize: 14 },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  title: { color: dark.text },
+  error: { color: dark.danger },
+  button: { backgroundColor: dark.accent },
+  linkText: { color: dark.accent },
+};

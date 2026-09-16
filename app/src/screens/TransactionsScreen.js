@@ -12,6 +12,8 @@ import {
 } from "react-native";
 import { useCategories, useDeleteTransaction, useRecategorizeTransaction, useTransactions } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -31,6 +33,7 @@ export default function TransactionsScreen() {
 
   const [pickerTx, setPickerTx] = useState(null);
   const [addTxVisible, setAddTxVisible] = useState(false);
+  const s = useThemedStyles(styles, darkStyles);
 
   function categoryName(categoryId) {
     return categories.find((c) => c.id === categoryId)?.name ?? "Uncategorized";
@@ -65,45 +68,41 @@ export default function TransactionsScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.headerRow}>
-        <Text style={styles.header}>{month}</Text>
-        <TouchableOpacity style={styles.addButton} onPress={() => setAddTxVisible(true)}>
-          <Text style={styles.addButtonText}>+ Add Transaction</Text>
+    <View style={s.container}>
+      <View style={s.headerRow}>
+        <Text style={s.header}>{month}</Text>
+        <TouchableOpacity style={s.addButton} onPress={() => setAddTxVisible(true)}>
+          <Text style={s.addButtonText}>+ Add Transaction</Text>
         </TouchableOpacity>
       </View>
 
       {isPending ? (
-        <View style={styles.loadingBox}>
+        <View style={s.loadingBox}>
           <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading transactions…</Text>
+          <Text style={s.loadingText}>Loading transactions…</Text>
         </View>
       ) : (
         <FlatList
           data={transactions}
           keyExtractor={(item) => String(item.id)}
           refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <Text style={styles.empty}>No transactions this month yet. Add one to get started.</Text>
-          }
+          contentContainerStyle={s.list}
+          ListEmptyComponent={<Text style={s.empty}>No transactions this month yet. Add one to get started.</Text>}
           ListHeaderComponent={
-            transactions.length > 0 ? <Text style={styles.hint}>Long-press a transaction to delete it.</Text> : null
+            transactions.length > 0 ? <Text style={s.hint}>Long-press a transaction to delete it.</Text> : null
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={styles.row} onLongPress={() => handleDelete(item)}>
-              <View style={styles.rowMain}>
-                <Text style={styles.description} numberOfLines={1}>
+            <TouchableOpacity style={s.row} onLongPress={() => handleDelete(item)}>
+              <View style={s.rowMain}>
+                <Text style={s.description} numberOfLines={1}>
                   {item.description}
                 </Text>
-                <Text style={styles.date}>{item.date}</Text>
+                <Text style={s.date}>{item.date}</Text>
               </View>
-              <View style={styles.rowSide}>
-                <Text style={[styles.amount, item.amount < 0 && styles.amountCredit]}>
-                  {formatAmount(item.amount)}
-                </Text>
+              <View style={s.rowSide}>
+                <Text style={[s.amount, item.amount < 0 && s.amountCredit]}>{formatAmount(item.amount)}</Text>
                 <TouchableOpacity onPress={() => setPickerTx(item)}>
-                  <Text style={styles.category}>{categoryName(item.categoryId)}</Text>
+                  <Text style={s.category}>{categoryName(item.categoryId)}</Text>
                 </TouchableOpacity>
               </View>
             </TouchableOpacity>
@@ -112,12 +111,12 @@ export default function TransactionsScreen() {
       )}
 
       <Modal visible={!!pickerTx} transparent animationType="slide" onRequestClose={() => setPickerTx(null)}>
-        <TouchableOpacity style={styles.modalBackdrop} activeOpacity={1} onPress={() => setPickerTx(null)}>
-          <View style={styles.modalSheet}>
-            <Text style={styles.modalTitle}>Categorize</Text>
+        <TouchableOpacity style={s.modalBackdrop} activeOpacity={1} onPress={() => setPickerTx(null)}>
+          <View style={s.modalSheet}>
+            <Text style={s.modalTitle}>Categorize</Text>
             {categories.map((c) => (
-              <TouchableOpacity key={c.id} style={styles.modalItem} onPress={() => handlePickCategory(c)}>
-                <Text style={styles.modalItemText}>{c.name}</Text>
+              <TouchableOpacity key={c.id} style={s.modalItem} onPress={() => handlePickCategory(c)}>
+                <Text style={s.modalItemText}>{c.name}</Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -178,3 +177,22 @@ const styles = StyleSheet.create({
   modalItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
   modalItemText: { fontSize: 16 },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  header: { color: dark.textMuted },
+  addButton: { backgroundColor: dark.accent },
+  loadingText: { color: dark.textMuted },
+  empty: { color: dark.textMuted },
+  hint: { color: dark.textFaint },
+  row: { backgroundColor: dark.card },
+  description: { color: dark.text },
+  date: { color: dark.textFaint },
+  amount: { color: dark.text },
+  amountCredit: { color: dark.success },
+  category: { color: dark.accent },
+  modalSheet: { backgroundColor: dark.card },
+  modalTitle: { color: dark.text },
+  modalItem: { borderBottomColor: dark.border },
+  modalItemText: { color: dark.text },
+};

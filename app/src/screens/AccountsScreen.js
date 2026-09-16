@@ -14,6 +14,8 @@ import { useAccounts, useCreateAccount, useDeleteAccount } from "../data/queries
 import { useAuth } from "../context/AuthContext";
 import CsvImportModal from "../components/CsvImportModal";
 import FormModal from "../components/FormModal";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 const ACCOUNT_TYPES = ["credit", "checking", "savings"];
 
@@ -30,6 +32,7 @@ export default function AccountsScreen() {
   const [importAccountId, setImportAccountId] = useState(null);
   const [members, setMembers] = useState([]);
   const [ownerUserIds, setOwnerUserIds] = useState([]);
+  const s = useThemedStyles(styles, darkStyles);
 
   // Who's available to own an account (a single owner for a personal
   // credit card, more than one for something shared like a household
@@ -103,41 +106,39 @@ export default function AccountsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <View style={s.container}>
       {isPending ? (
-        <View style={styles.loadingBox}>
+        <View style={s.loadingBox}>
           <ActivityIndicator />
-          <Text style={styles.loadingText}>Loading accounts…</Text>
+          <Text style={s.loadingText}>Loading accounts…</Text>
         </View>
       ) : (
         <FlatList
           data={accounts}
           keyExtractor={(item) => String(item.id)}
           refreshControl={<RefreshControl refreshing={isFetching} onRefresh={refetch} />}
-          contentContainerStyle={styles.list}
-          ListEmptyComponent={
-            <Text style={styles.empty}>No accounts yet. Add your first account below.</Text>
-          }
+          contentContainerStyle={s.list}
+          ListEmptyComponent={<Text style={s.empty}>No accounts yet. Add your first account below.</Text>}
           renderItem={({ item }) => (
-            <View style={styles.card}>
-              <View style={styles.cardHeader}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                <View style={styles.cardHeaderRight}>
-                  <Text style={styles.badge}>{item.type}</Text>
+            <View style={s.card}>
+              <View style={s.cardHeader}>
+                <Text style={s.cardTitle}>{item.name}</Text>
+                <View style={s.cardHeaderRight}>
+                  <Text style={s.badge}>{item.type}</Text>
                   <TouchableOpacity onPress={() => handleDelete(item)} disabled={deletingId === item.id}>
-                    <Text style={styles.deleteText}>{deletingId === item.id ? "…" : "Delete"}</Text>
+                    <Text style={s.deleteText}>{deletingId === item.id ? "…" : "Delete"}</Text>
                   </TouchableOpacity>
                 </View>
               </View>
-              {item.institution ? <Text style={styles.cardSubtitle}>{item.institution}</Text> : null}
+              {item.institution ? <Text style={s.cardSubtitle}>{item.institution}</Text> : null}
               {item.ownerUserIds?.length ? (
-                <Text style={styles.cardSubtitle}>
+                <Text style={s.cardSubtitle}>
                   {item.ownerUserIds.length > 1 ? "Shared: " : "Owner: "}
                   {item.ownerUserIds.map(memberLabel).join(", ")}
                 </Text>
               ) : null}
-              <TouchableOpacity style={styles.importButton} onPress={() => setImportAccountId(item.id)}>
-                <Text style={styles.importButtonText}>Import CSV</Text>
+              <TouchableOpacity style={s.importButton} onPress={() => setImportAccountId(item.id)}>
+                <Text style={s.importButtonText}>Import CSV</Text>
               </TouchableOpacity>
             </View>
           )}
@@ -151,55 +152,50 @@ export default function AccountsScreen() {
         onImported={() => setImportAccountId(null)}
       />
 
-      <TouchableOpacity style={styles.addButton} onPress={() => setShowForm(true)}>
-        <Text style={styles.addButtonText}>+ Add Account</Text>
+      <TouchableOpacity style={s.addButton} onPress={() => setShowForm(true)}>
+        <Text style={s.addButtonText}>+ Add Account</Text>
       </TouchableOpacity>
 
       <FormModal visible={showForm} onClose={() => setShowForm(false)}>
-        <Text style={styles.modalTitle}>Add account</Text>
+        <Text style={s.modalTitle}>Add account</Text>
+        <TextInput style={s.input} placeholder="Account name (e.g. Amex Gold)" value={name} onChangeText={setName} />
         <TextInput
-          style={styles.input}
-          placeholder="Account name (e.g. Amex Gold)"
-          value={name}
-          onChangeText={setName}
-        />
-        <TextInput
-          style={styles.input}
+          style={s.input}
           placeholder="Institution (optional)"
           value={institution}
           onChangeText={setInstitution}
         />
-        <View style={styles.typeRow}>
+        <View style={s.typeRow}>
           {ACCOUNT_TYPES.map((t) => (
             <TouchableOpacity
               key={t}
-              style={[styles.typeButton, type === t && styles.typeButtonActive]}
+              style={[s.typeButton, type === t && s.typeButtonActive]}
               onPress={() => setType(t)}
             >
-              <Text style={[styles.typeButtonText, type === t && styles.typeButtonTextActive]}>{t}</Text>
+              <Text style={[s.typeButtonText, type === t && s.typeButtonTextActive]}>{t}</Text>
             </TouchableOpacity>
           ))}
         </View>
-        <Text style={styles.label}>Owners</Text>
-        <View style={styles.chipRow}>
+        <Text style={s.label}>Owners</Text>
+        <View style={s.chipRow}>
           {members.map((m) => (
             <TouchableOpacity
               key={m.userId}
-              style={[styles.chip, ownerUserIds.includes(m.userId) && styles.chipActive]}
+              style={[s.chip, ownerUserIds.includes(m.userId) && s.chipActive]}
               onPress={() => toggleOwner(m.userId)}
             >
-              <Text style={[styles.chipText, ownerUserIds.includes(m.userId) && styles.chipTextActive]}>
+              <Text style={[s.chipText, ownerUserIds.includes(m.userId) && s.chipTextActive]}>
                 {memberLabel(m.userId)}
               </Text>
             </TouchableOpacity>
           ))}
         </View>
-        <View style={styles.formActions}>
-          <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowForm(false)}>
-            <Text style={styles.secondaryButtonText}>Cancel</Text>
+        <View style={s.formActions}>
+          <TouchableOpacity style={s.secondaryButton} onPress={() => setShowForm(false)}>
+            <Text style={s.secondaryButtonText}>Cancel</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.primaryButton} onPress={handleAddAccount}>
-            <Text style={styles.primaryButtonText}>Save</Text>
+          <TouchableOpacity style={s.primaryButton} onPress={handleAddAccount}>
+            <Text style={s.primaryButtonText}>Save</Text>
           </TouchableOpacity>
         </View>
       </FormModal>
@@ -290,3 +286,25 @@ const styles = StyleSheet.create({
   secondaryButton: { paddingVertical: 10, paddingHorizontal: 18 },
   secondaryButtonText: { color: "#666" },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  empty: { color: dark.textMuted },
+  card: { backgroundColor: dark.card, shadowOpacity: 0 },
+  cardTitle: { color: dark.text },
+  cardSubtitle: { color: dark.textMuted },
+  loadingText: { color: dark.textMuted },
+  badge: { color: dark.accent, backgroundColor: dark.accentSoft },
+  addButton: { backgroundColor: dark.accent },
+  modalTitle: { color: dark.text },
+  input: { borderColor: dark.border, color: dark.text, backgroundColor: dark.bgAlt },
+  typeButton: { borderColor: dark.border },
+  typeButtonActive: { backgroundColor: dark.accent, borderColor: dark.accent },
+  typeButtonText: { color: dark.text },
+  label: { color: dark.text },
+  chip: { borderColor: dark.border, backgroundColor: dark.chipBg },
+  chipActive: { backgroundColor: dark.accent, borderColor: dark.accent },
+  chipText: { color: dark.text },
+  primaryButton: { backgroundColor: dark.accent },
+  secondaryButtonText: { color: dark.textMuted },
+};

@@ -1,6 +1,8 @@
 import { useState } from "react";
 import { Modal, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { useAuth } from "../context/AuthContext";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 /**
  * Shown exactly once, right after a household DEK first becomes available
@@ -12,40 +14,41 @@ import { useAuth } from "../context/AuthContext";
 export default function RecoveryCodeModal() {
   const { pendingRecoveryCode, acknowledgeRecoveryCode } = useAuth();
   const [confirmed, setConfirmed] = useState(false);
+  const s = useThemedStyles(styles, darkStyles);
 
   if (!pendingRecoveryCode) return null;
 
   return (
     <Modal visible transparent animationType="fade" onRequestClose={() => {}}>
-      <View style={styles.backdrop}>
-        <View style={styles.card}>
-          <Text style={styles.title}>Save your recovery code</Text>
-          <Text style={styles.body}>
-            If you ever forget your vault passphrase, this code is the only other way to get back
-            into your data — nobody else can generate it for you, including us. Write it down or
-            save it in a password manager now.
+      <View style={s.backdrop}>
+        <View style={s.card}>
+          <Text style={s.title}>Save your recovery code</Text>
+          <Text style={s.body}>
+            If this device ever loses access to your household's data (a lost phone, reinstalling the app), this
+            code is the only other way back in — nobody else can generate it for you, including us. Write it down
+            or save it in a password manager now.
           </Text>
 
-          <View style={styles.codeBox}>
-            <Text style={styles.code} selectable>
+          <View style={s.codeBox}>
+            <Text style={s.code} selectable>
               {pendingRecoveryCode.code}
             </Text>
           </View>
-          <Text style={styles.hint}>Long-press the code above to copy it.</Text>
+          <Text style={s.hint}>Long-press the code above to copy it.</Text>
 
-          <TouchableOpacity style={styles.checkboxRow} onPress={() => setConfirmed((v) => !v)}>
-            <View style={[styles.checkbox, confirmed && styles.checkboxChecked]}>
-              {confirmed ? <Text style={styles.checkboxMark}>✓</Text> : null}
+          <TouchableOpacity style={s.checkboxRow} onPress={() => setConfirmed((v) => !v)}>
+            <View style={[s.checkbox, confirmed && s.checkboxChecked]}>
+              {confirmed ? <Text style={s.checkboxMark}>✓</Text> : null}
             </View>
-            <Text style={styles.checkboxLabel}>I've saved this code somewhere safe</Text>
+            <Text style={s.checkboxLabel}>I've saved this code somewhere safe</Text>
           </TouchableOpacity>
 
           <TouchableOpacity
-            style={[styles.button, !confirmed && styles.buttonDisabled]}
+            style={[s.button, !confirmed && s.buttonDisabled]}
             onPress={acknowledgeRecoveryCode}
             disabled={!confirmed}
           >
-            <Text style={styles.buttonText}>Continue</Text>
+            <Text style={s.buttonText}>Continue</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -78,3 +81,16 @@ const styles = StyleSheet.create({
   buttonDisabled: { backgroundColor: "#ccc" },
   buttonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
 });
+
+const darkStyles = {
+  card: { backgroundColor: dark.card },
+  title: { color: dark.text },
+  body: { color: dark.textMuted },
+  codeBox: { backgroundColor: dark.bgAlt },
+  code: { color: dark.text },
+  hint: { color: dark.textFaint },
+  checkbox: { borderColor: dark.border },
+  checkboxChecked: { backgroundColor: dark.accent, borderColor: dark.accent },
+  checkboxLabel: { color: dark.text },
+  button: { backgroundColor: dark.accent },
+};

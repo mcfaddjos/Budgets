@@ -3,6 +3,8 @@ import { ActivityIndicator, Alert, FlatList, StyleSheet, Text, TouchableOpacity,
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { seedSeptemberDemoData } from "../data/devSeed";
+import { useThemedStyles } from "../theme/ThemeContext";
+import { dark } from "../theme/palette";
 
 const INVITE_EXPIRES_IN_DAYS = 7;
 
@@ -22,6 +24,7 @@ export default function HouseholdScreen() {
   const [grantingUserId, setGrantingUserId] = useState(null);
   const [seeding, setSeeding] = useState(false);
   const queryClient = useQueryClient();
+  const s = useThemedStyles(styles, darkStyles);
 
   const loadPending = useCallback(async () => {
     try {
@@ -79,34 +82,32 @@ export default function HouseholdScreen() {
   }
 
   return (
-    <View style={styles.container}>
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Signed in as</Text>
-        <Text style={styles.identity}>{user?.name || user?.email}</Text>
+    <View style={s.container}>
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>Signed in as</Text>
+        <Text style={s.identity}>{user?.name || user?.email}</Text>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Invite someone</Text>
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>Invite someone</Text>
         {invite ? (
-          <View style={styles.inviteBox}>
-            <Text style={styles.inviteCode} selectable>
+          <View style={s.inviteBox}>
+            <Text style={s.inviteCode} selectable>
               {invite.code}
             </Text>
-            <Text style={styles.inviteHint}>
-              Valid {INVITE_EXPIRES_IN_DAYS} days, one-time use. Long-press to copy.
-            </Text>
+            <Text style={s.inviteHint}>Valid {INVITE_EXPIRES_IN_DAYS} days, one-time use. Long-press to copy.</Text>
           </View>
         ) : null}
-        <TouchableOpacity style={styles.button} onPress={handleCreateInvite} disabled={creatingInvite}>
-          <Text style={styles.buttonText}>{creatingInvite ? "Creating…" : "Create Invite Code"}</Text>
+        <TouchableOpacity style={s.button} onPress={handleCreateInvite} disabled={creatingInvite}>
+          <Text style={s.buttonText}>{creatingInvite ? "Creating…" : "Create Invite Code"}</Text>
         </TouchableOpacity>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Waiting for access</Text>
-        <Text style={styles.sectionHint}>
-          Someone who joined with an invite can't decrypt anything until you grant them access from
-          here — see PRD §10a.
+      <View style={s.section}>
+        <Text style={s.sectionTitle}>Waiting for access</Text>
+        <Text style={s.sectionHint}>
+          Someone who joined with an invite can't decrypt anything until you grant them access from here — see PRD
+          §10a.
         </Text>
         {loadingPending ? (
           <ActivityIndicator style={{ marginTop: 12 }} />
@@ -114,16 +115,16 @@ export default function HouseholdScreen() {
           <FlatList
             data={pending}
             keyExtractor={(item) => item.userId}
-            ListEmptyComponent={<Text style={styles.empty}>Nobody waiting right now.</Text>}
+            ListEmptyComponent={<Text style={s.empty}>Nobody waiting right now.</Text>}
             renderItem={({ item }) => (
-              <View style={styles.pendingRow}>
-                <Text style={styles.pendingName}>{item.name || item.email}</Text>
+              <View style={s.pendingRow}>
+                <Text style={s.pendingName}>{item.name || item.email}</Text>
                 <TouchableOpacity
-                  style={styles.grantButton}
+                  style={s.grantButton}
                   onPress={() => handleGrant(item)}
                   disabled={grantingUserId === item.userId}
                 >
-                  <Text style={styles.grantButtonText}>
+                  <Text style={s.grantButtonText}>
                     {grantingUserId === item.userId ? "Granting…" : "Grant access"}
                   </Text>
                 </TouchableOpacity>
@@ -134,14 +135,14 @@ export default function HouseholdScreen() {
       </View>
 
       {__DEV__ || isHouseholdOwner ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Admin tools</Text>
-          <Text style={styles.sectionHint}>
-            Only visible to this household's owner. Seeds this household with the real category
-            names and confidently-parseable transactions from the September spreadsheet.
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Admin tools</Text>
+          <Text style={s.sectionHint}>
+            Only visible to this household's owner. Seeds this household with the real category names and
+            confidently-parseable transactions from the September spreadsheet.
           </Text>
-          <TouchableOpacity style={styles.button} onPress={handleSeedDemoData} disabled={seeding}>
-            <Text style={styles.buttonText}>{seeding ? "Seeding…" : "Seed September Demo Data"}</Text>
+          <TouchableOpacity style={s.button} onPress={handleSeedDemoData} disabled={seeding}>
+            <Text style={s.buttonText}>{seeding ? "Seeding…" : "Seed September Demo Data"}</Text>
           </TouchableOpacity>
         </View>
       ) : null}
@@ -173,3 +174,19 @@ const styles = StyleSheet.create({
   grantButton: { backgroundColor: "#1a1a1a", borderRadius: 6, paddingVertical: 6, paddingHorizontal: 12 },
   grantButtonText: { color: "#fff", fontSize: 12, fontWeight: "600" },
 });
+
+const darkStyles = {
+  container: { backgroundColor: dark.bg },
+  section: { backgroundColor: dark.card },
+  sectionTitle: { color: dark.textMuted },
+  sectionHint: { color: dark.textFaint },
+  identity: { color: dark.text },
+  inviteBox: { backgroundColor: dark.bgAlt },
+  inviteCode: { color: dark.text },
+  inviteHint: { color: dark.textFaint },
+  button: { backgroundColor: dark.accent },
+  empty: { color: dark.textMuted },
+  pendingRow: { borderBottomColor: dark.border },
+  pendingName: { color: dark.text },
+  grantButton: { backgroundColor: dark.accent },
+};

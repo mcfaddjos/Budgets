@@ -331,6 +331,29 @@ the budget quietly.
   or a direct client-to-vision-API call — never proxied through our own
   backend.
 
+### 8.7 Settings & appearance (built, 2026-09-16)
+
+A gear icon (top-right, replacing the old inline "Log out" text) opens a
+Settings screen: account name/email, your role in this household, a
+Light/Dark appearance toggle, a Feedback entry point, and app info (version,
+which backend it's currently connected to). Log out moved here from the
+top bar.
+
+- **Dark mode**: a second color palette (`app/src/theme/palette.js`),
+  deliberately muted/off-tone rather than a true black or true blue, per
+  explicit preference. Persisted across restarts (`AsyncStorage`).
+  Applied across the whole app (chrome, all four tabs, auth screens,
+  every modal) via a shared `useThemedStyles` helper that merges a small
+  set of dark-only overrides onto each screen's existing light
+  `StyleSheet` — a quick pass, not a pixel-perfect redesign; some fine
+  detail (e.g. a couple of inline color overrides in Budgets' progress
+  bars) still hard-codes light-mode colors.
+- **Feedback (intentionally not wired up)**: a "Send Feedback" button
+  exists in Settings; tapping it shows a "not built yet" message rather
+  than doing anything. Established this session as the pattern going
+  forward for shipping a visible placeholder before the real feature
+  exists, rather than hiding unbuilt options entirely.
+
 ## 9. Data Model (high level, post §5a/§5b household migration)
 
 - **Household**: id, name (optional), createdAt.
