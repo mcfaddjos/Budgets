@@ -261,6 +261,11 @@ export function AuthProvider({ children }) {
     return api.listPendingKeyGrants(householdId);
   }
 
+  /** Every member of a household (granted or pending) — e.g. for an account owner picker. */
+  function listMembers(householdId) {
+    return api.listMembers(householdId);
+  }
+
   /** Completes another member's access — wraps this household's DEK (already unlocked here) to their public key. */
   async function grantAccessTo(householdId, memberUserId, memberPublicKeyB64) {
     const dek = session.getHouseholdDek(householdId);
@@ -304,6 +309,7 @@ export function AuthProvider({ children }) {
         refreshMemberships,
         acknowledgeRecoveryCode,
         listPendingKeyGrants,
+        listMembers,
         grantAccessTo,
         createInvite,
         logout,

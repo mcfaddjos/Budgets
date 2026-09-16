@@ -246,6 +246,7 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 - Support PDF statement upload with text extraction for issuers that only offer PDF statements; flag low-confidence extractions for manual review rather than silently guessing.
 - Deduplicate transactions on import using date + amount + normalized description (+ statement source) to avoid double-counting overlapping statement periods.
 - Support multiple accounts per household (multiple credit cards, plus savings/checking), each statement import tagged to an account.
+- **Account ownership (built, 2026-09-16)**: each account has one or more owners, chosen at creation from the household's member list — a single owner for a personal account (e.g. one person's credit card), more than one for something shared (e.g. a household savings account). Shown on each account card in the app.
 
 ### 8.2 Categorization
 - Maintain a configurable category list (e.g., Groceries, Dining, Utilities, Transport, Entertainment, Income, Transfer), shared across the household (§5a) — creating/renaming a category is now built (rename added 2026-09-11); deleting one is not yet.
@@ -336,7 +337,7 @@ the budget quietly.
 - **User**: id, googleId, email, name, plus key-material fields for §10a (publicKey, encryptedPrivateKey, vaultKdfSalt, etc.) — **no `householdId` column** (see §5b: membership is a relationship, not a field on User, so one user can belong to more than one household without a schema change). Authoritative field list lives in `backend/prisma/schema.prisma`, kept ahead of this high-level summary.
 - **HouseholdMember**: householdId, userId, role (`owner` | `member`), joinedAt — the join table that actually links users to households.
 - **Invite**: id, householdId, code, createdByUserId, createdAt, expiresAt (nullable), usedByUserId (nullable) — household-scoped, replacing today's single global `INVITE_CODE`.
-- **Account**: id, householdId, name, type (credit/checking/savings), institution.
+- **Account**: id, householdId, name, type (credit/checking/savings), institution, **ownerUserIds** (2026-09-16 — a plaintext list of member user ids; one for a personal account like a single credit card, more than one for something shared like a household savings account; validated server-side to actually be members of the account's household).
 - **Statement Import**: id, account_id, file type, imported_at, source filename, date range covered.
 - **Transaction**: id, householdId, account_id, statement_import_id, date, description (raw + normalized), amount, category_id, reviewed (bool), notes, **createdByUserId**.
 - **Category**: id, householdId, name, parent_category_id (optional, for subcategories).

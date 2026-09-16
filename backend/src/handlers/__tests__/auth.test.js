@@ -186,4 +186,28 @@ test("the full invite -> pending join -> grant access -> recovery key handshake"
     where: { householdId_userId: { householdId: owner.householdId, userId: joined.user.id } },
   });
   expect(finalMembership.recoveryWrappedDek).toBe("recovery-ct");
+
+  // Either member can list the full roster now that both have access.
+  const members = await authHandlers.listMembers(joinerUser, { householdId: owner.householdId });
+  expect(members.sort((a, b) => a.role.localeCompare(b.role))).toEqual(
+    [
+      { userId: owner.user.id, email: `${ownerSuffix}@example.com`, name: "Owner", role: "OWNER" },
+      { userId: joined.user.id, email: `${joinerSuffix}@example.com`, name: "Joiner", role: "MEMBER" },
+    ].sort((a, b) => a.role.localeCompare(b.role))
+  );
+
+  // A non-member can't list the roster.
+  const outsiderSuffix = crypto.randomUUID();
+  mockGoogleUser({ sub: `sub-${outsiderSuffix}`, email: `${outsiderSuffix}@example.com`, name: "Outsider" });
+  const outsider = await authHandlers.registerNewHousehold({
+    idToken: "fake",
+    ...fakeKeyMaterial(outsiderSuffix),
+    wrappedDek: `wrapped-${outsiderSuffix}`,
+  });
+  createdUserIds.push(outsider.user.id);
+  createdHouseholdIds.push(outsider.householdId);
+  const outsiderUser = await db.user.findUnique({ where: { id: outsider.user.id } });
+  await expect(authHandlers.listMembers(outsiderUser, { householdId: owner.householdId })).rejects.toThrow(
+    /not a member/i
+  );
 });

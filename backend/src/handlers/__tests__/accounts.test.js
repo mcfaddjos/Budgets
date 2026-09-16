@@ -41,3 +41,30 @@ test("remove is idempotent — a retried delete of an already-gone row succeeds"
   const second = await accounts.remove(fixture.user, { id: created.id });
   expect(second).toEqual({ ok: true });
 });
+
+test("create defaults ownerUserIds to just the creator", async () => {
+  const created = await accounts.create(fixture.user, { encryptedData: "ct-owner-default", nonce: "n" });
+  expect(created.ownerUserIds).toEqual([fixture.user.id]);
+});
+
+test("create accepts multiple owners who are all household members (a shared account)", async () => {
+  const secondMember = await createTestUser();
+  await db.householdMember.create({
+    data: { householdId: fixture.household.id, userId: secondMember.id, role: "MEMBER", wrappedDek: "wrapped" },
+  });
+
+  const created = await accounts.create(fixture.user, {
+    encryptedData: "ct-shared",
+    nonce: "n",
+    ownerUserIds: [fixture.user.id, secondMember.id],
+  });
+  expect(created.ownerUserIds.sort()).toEqual([fixture.user.id, secondMember.id].sort());
+
+  await cleanupUser(secondMember);
+});
+
+test("create rejects an ownerUserId that isn't a member of this household", async () => {
+  await expect(
+    accounts.create(fixture.user, { encryptedData: "ct", nonce: "n", ownerUserIds: [outsider.id] })
+  ).rejects.toThrow(/must all be members/);
+});

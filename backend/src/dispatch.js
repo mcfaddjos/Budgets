@@ -20,6 +20,7 @@ const ROUTES = {
   "auth.me": (user) => authHandlers.me(user),
   "auth.createInvite": (user, payload) => authHandlers.createInvite(user, payload),
   "auth.listPendingKeyGrants": (user, payload) => authHandlers.listPendingKeyGrants(user, payload),
+  "auth.listMembers": (user, payload) => authHandlers.listMembers(user, payload),
   "auth.grantAccess": (user, payload) => authHandlers.grantAccess(user, payload),
   "auth.setRecoveryKey": (user, payload) => authHandlers.setRecoveryKey(user, payload),
 

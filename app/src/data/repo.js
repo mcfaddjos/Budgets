@@ -29,13 +29,13 @@ async function decryptRows(dek, rows, extraFields) {
 export async function listAccounts(householdId) {
   const dek = session.getHouseholdDek(householdId);
   const raw = await api.getAccounts();
-  return decryptRows(dek, raw, ["createdAt"]);
+  return decryptRows(dek, raw, ["createdAt", "ownerUserIds"]);
 }
 
-export async function createAccount(householdId, { name, type, institution }) {
+export async function createAccount(householdId, { name, type, institution, ownerUserIds }) {
   const dek = session.getHouseholdDek(householdId);
   const { encryptedData, nonce } = await records.encryptRecord(dek, { name, type, institution: institution || null });
-  return api.createAccount(encryptedData, nonce);
+  return api.createAccount(encryptedData, nonce, ownerUserIds);
 }
 
 export function deleteAccount(id) {

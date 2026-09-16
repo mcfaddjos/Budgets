@@ -177,6 +177,21 @@ async function listPendingKeyGrants(user, payload) {
   return pending.map((m) => ({ userId: m.userId, email: m.user.email, name: m.user.name, publicKey: m.user.publicKey }));
 }
 
+/** Every member of a household (granted or still pending) — for building an owner picker, member list, etc. */
+async function listMembers(user, payload) {
+  const { householdId } = payload || {};
+  const membership = await db.householdMember.findUnique({
+    where: { householdId_userId: { householdId, userId: user.id } },
+  });
+  if (!membership) throw new Error("Not a member of that household");
+
+  const members = await db.householdMember.findMany({
+    where: { householdId },
+    include: { user: { select: { id: true, email: true, name: true } } },
+  });
+  return members.map((m) => ({ userId: m.userId, email: m.user.email, name: m.user.name, role: m.role }));
+}
+
 /** Completes a pending member's access — see listPendingKeyGrants above. */
 async function grantAccess(user, payload) {
   const { householdId, memberUserId, wrappedDek } = payload || {};
@@ -233,6 +248,7 @@ module.exports = {
   me,
   createInvite,
   listPendingKeyGrants,
+  listMembers,
   grantAccess,
   setRecoveryKey,
 };

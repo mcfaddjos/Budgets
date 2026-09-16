@@ -196,14 +196,15 @@ export const api = {
   me: (opts) => call("auth.me", undefined, opts),
   createInvite: (householdId, expiresInDays) => call("auth.createInvite", { householdId, expiresInDays }),
   listPendingKeyGrants: (householdId) => call("auth.listPendingKeyGrants", { householdId }),
+  listMembers: (householdId) => call("auth.listMembers", { householdId }),
   grantAccess: (householdId, memberUserId, wrappedDek) =>
     call("auth.grantAccess", { householdId, memberUserId, wrappedDek }),
   setRecoveryKey: (householdId, recoveryWrappedDek, recoveryDekNonce) =>
     call("auth.setRecoveryKey", { householdId, recoveryWrappedDek, recoveryDekNonce }),
 
   getAccounts: () => call("accounts.list"),
-  createAccount: async (encryptedData, nonce) => {
-    const result = await call("accounts.create", { encryptedData, nonce });
+  createAccount: async (encryptedData, nonce, ownerUserIds) => {
+    const result = await call("accounts.create", { encryptedData, nonce, ownerUserIds });
     invalidateClientCache("accounts.list");
     return result;
   },

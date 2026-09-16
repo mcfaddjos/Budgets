@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
@@ -11,11 +11,13 @@ import {
   View,
 } from "react-native";
 import { useAccounts, useCreateAccount, useDeleteAccount } from "../data/queries";
+import { useAuth } from "../context/AuthContext";
 import CsvImportModal from "../components/CsvImportModal";
 
 const ACCOUNT_TYPES = ["credit", "checking", "savings"];
 
 export default function AccountsScreen() {
+  const { user, activeHouseholdId, listMembers } = useAuth();
   const { data: accounts = [], isPending, isFetching, refetch } = useAccounts();
   const createAccount = useCreateAccount();
   const deleteAccount = useDeleteAccount();
@@ -25,17 +27,50 @@ export default function AccountsScreen() {
   const [type, setType] = useState("credit"); // primary spending source per PRD §1
   const [deletingId, setDeletingId] = useState(null);
   const [importAccountId, setImportAccountId] = useState(null);
+  const [members, setMembers] = useState([]);
+  const [ownerUserIds, setOwnerUserIds] = useState([]);
+
+  // Who's available to own an account (a single owner for a personal
+  // credit card, more than one for something shared like a household
+  // savings account) — defaults to just yourself until you add co-owners.
+  useEffect(() => {
+    if (!activeHouseholdId) return;
+    listMembers(activeHouseholdId)
+      .then(setMembers)
+      .catch(() => {}); // non-critical — the owner picker just won't show if this fails
+    setOwnerUserIds(user?.id ? [user.id] : []);
+  }, [activeHouseholdId, listMembers, user?.id]);
+
+  function toggleOwner(userId) {
+    setOwnerUserIds((prev) => (prev.includes(userId) ? prev.filter((id) => id !== userId) : [...prev, userId]));
+  }
+
+  function memberLabel(userId) {
+    if (userId === user?.id) return "You";
+    const member = members.find((m) => m.userId === userId);
+    return member?.name || member?.email || "Unknown";
+  }
 
   async function handleAddAccount() {
     if (!name.trim()) {
       Alert.alert("Name required", "Give the account a name, e.g. \"Amex Gold\".");
       return;
     }
+    if (ownerUserIds.length === 0) {
+      Alert.alert("Owner required", "Pick at least one owner for this account.");
+      return;
+    }
     try {
-      await createAccount.mutateAsync({ name: name.trim(), type, institution: institution.trim() || null });
+      await createAccount.mutateAsync({
+        name: name.trim(),
+        type,
+        institution: institution.trim() || null,
+        ownerUserIds,
+      });
       setName("");
       setInstitution("");
       setType("credit");
+      setOwnerUserIds(user?.id ? [user.id] : []);
       setShowForm(false);
     } catch (err) {
       Alert.alert("Couldn't add account", err.message);
@@ -94,6 +129,12 @@ export default function AccountsScreen() {
                 </View>
               </View>
               {item.institution ? <Text style={styles.cardSubtitle}>{item.institution}</Text> : null}
+              {item.ownerUserIds?.length ? (
+                <Text style={styles.cardSubtitle}>
+                  {item.ownerUserIds.length > 1 ? "Shared: " : "Owner: "}
+                  {item.ownerUserIds.map(memberLabel).join(", ")}
+                </Text>
+              ) : null}
               <TouchableOpacity style={styles.importButton} onPress={() => setImportAccountId(item.id)}>
                 <Text style={styles.importButtonText}>Import CSV</Text>
               </TouchableOpacity>
@@ -132,6 +173,20 @@ export default function AccountsScreen() {
               >
                 <Text style={[styles.typeButtonText, type === t && styles.typeButtonTextActive]}>
                   {t}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.label}>Owners</Text>
+          <View style={styles.chipRow}>
+            {members.map((m) => (
+              <TouchableOpacity
+                key={m.userId}
+                style={[styles.chip, ownerUserIds.includes(m.userId) && styles.chipActive]}
+                onPress={() => toggleOwner(m.userId)}
+              >
+                <Text style={[styles.chipText, ownerUserIds.includes(m.userId) && styles.chipTextActive]}>
+                  {memberLabel(m.userId)}
                 </Text>
               </TouchableOpacity>
             ))}
@@ -225,6 +280,12 @@ const styles = StyleSheet.create({
   typeButtonActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
   typeButtonText: { color: "#333", textTransform: "capitalize" },
   typeButtonTextActive: { color: "#fff" },
+  label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 8 },
+  chipRow: { flexDirection: "row", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  chip: { borderWidth: 1, borderColor: "#ddd", borderRadius: 16, paddingHorizontal: 12, paddingVertical: 6 },
+  chipActive: { backgroundColor: "#1a1a1a", borderColor: "#1a1a1a" },
+  chipText: { fontSize: 13, color: "#333" },
+  chipTextActive: { color: "#fff" },
   formActions: { flexDirection: "row", gap: 10, justifyContent: "flex-end" },
   primaryButton: { backgroundColor: "#1a6ed8", borderRadius: 8, paddingVertical: 10, paddingHorizontal: 18 },
   primaryButtonText: { color: "#fff", fontWeight: "600" },

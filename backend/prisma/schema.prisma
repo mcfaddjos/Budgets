@@ -172,6 +172,16 @@ model Account {
   encryptedData String // base64 — { name, type, institution }
   nonce         String // base64
 
+  // Who this account belongs to (one owner for a single person's credit
+  // card, more than one for something like a shared household savings
+  // account) — a list of userIds, kept plaintext like createdByUserId
+  // elsewhere: it's a reference, not financial content, so §10a's
+  // encryption rule doesn't apply. No FK/cascade on the array entries
+  // (Postgres text[] can't reference a table) — a user being removed from
+  // the household doesn't currently clean this up; not a concern yet at
+  // today's household scale.
+  ownerUserIds String[] @default([])
+
   createdAt    DateTime      @default(now())
   household    Household     @relation(fields: [householdId], references: [id], onDelete: Cascade)
   transactions Transaction[]
