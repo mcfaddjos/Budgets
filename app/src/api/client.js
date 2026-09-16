@@ -150,7 +150,7 @@ function invalidateClientCache(action) {
   clientCache.delete(action);
 }
 
-async function call(action, payload) {
+async function call(action, payload, { silent } = {}) {
   if (CACHEABLE_ACTIONS.has(action)) {
     const cached = clientCache.get(action);
     if (cached && Date.now() - cached.at < CLIENT_CACHE_TTL_MS) return cached.data;
@@ -174,7 +174,10 @@ async function call(action, payload) {
         // Surfaced to Logcat (tag ReactNativeJS) so a failure can be
         // pulled via adb without the user having to copy/paste it —
         // errors were previously only ever shown in the in-app UI.
-        console.error(`[api] ${action} failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, err.message);
+        // `silent` opts out for call sites where a rejection is an
+        // expected outcome, not a bug (e.g. probing a possibly-stale
+        // stored token on cold start).
+        if (!silent) console.error(`[api] ${action} failed (attempt ${attempt}/${MAX_ATTEMPTS}):`, err.message);
         throw err;
       }
       await sleep(300 * attempt);
@@ -190,7 +193,7 @@ export const api = {
   registerNewHousehold: (keyMaterial) => call("auth.registerNewHousehold", keyMaterial),
   joinHouseholdViaInvite: (payload) => call("auth.joinHouseholdViaInvite", payload),
   login: (idToken) => call("auth.login", { idToken }),
-  me: () => call("auth.me"),
+  me: (opts) => call("auth.me", undefined, opts),
   createInvite: (householdId, expiresInDays) => call("auth.createInvite", { householdId, expiresInDays }),
   listPendingKeyGrants: (householdId) => call("auth.listPendingKeyGrants", { householdId }),
   grantAccess: (householdId, memberUserId, wrappedDek) =>

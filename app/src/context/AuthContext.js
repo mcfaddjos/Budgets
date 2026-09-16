@@ -46,7 +46,10 @@ export function AuthProvider({ children }) {
       setServerUrlState(url);
       if (token) {
         try {
-          const me = await api.me();
+          // silent: a stale/invalid stored token here is an expected,
+          // self-healing outcome (e.g. switching the app to a different
+          // backend), not a bug worth surfacing to Logcat.
+          const me = await api.me({ silent: true });
           applyIdentity(me);
         } catch (err) {
           // Only a genuine server rejection (expired/invalid token) means the
