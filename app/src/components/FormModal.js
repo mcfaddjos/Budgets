@@ -14,6 +14,13 @@ import { KeyboardAvoidingView, Modal, Platform, ScrollView, StyleSheet, View } f
  * variant: "dialog" (default) centers a rounded card, matching
  * AddTransactionModal/BudgetsScreen's edit dialogs. "sheet" slides a
  * bottom sheet up instead, matching TransactionsScreen's category picker.
+ *
+ * No "height" behavior on Android: the app's windowSoftInputMode is
+ * already "adjustResize" (AndroidManifest.xml), which shrinks the
+ * Modal's window for the keyboard on its own — layering
+ * KeyboardAvoidingView's own height-shrinking on top of that resized it
+ * twice, leaving a gap at the bottom of the dimmed backdrop where the
+ * screen behind the modal showed through, right above the keyboard.
  */
 export default function FormModal({ visible, onClose, children, variant = "dialog" }) {
   const isSheet = variant === "sheet";
@@ -21,8 +28,7 @@ export default function FormModal({ visible, onClose, children, variant = "dialo
     <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
       <KeyboardAvoidingView
         style={styles.backdrop}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+        behavior={Platform.OS === "ios" ? "padding" : undefined}
       >
         <ScrollView
           contentContainerStyle={[styles.scrollContent, isSheet && styles.scrollContentSheet]}
