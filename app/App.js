@@ -45,7 +45,7 @@ function MainApp() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.topBar}>
-        <Text style={styles.greeting}>Hi, {user.name || user.email}</Text>
+        <Text style={styles.greeting}>Hi, {user.name || user.email || "there"}</Text>
         <TouchableOpacity onPress={logout}>
           <Text style={styles.logout}>Log out</Text>
         </TouchableOpacity>

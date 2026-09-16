@@ -114,10 +114,20 @@ async function joinHouseholdViaInvite({ idToken, inviteCode, publicKey, encrypte
 
 /** Returning user, any device — Google re-verifies identity; no local secret is checked server-side at all. */
 async function login({ idToken }) {
-  const { googleId } = await verifyGoogleIdToken(idToken);
+  const { googleId, email, name } = await verifyGoogleIdToken(idToken);
 
-  const user = await db.user.findUnique({ where: { googleId } });
+  let user = await db.user.findUnique({ where: { googleId } });
   if (!user) throw new Error("No account found — register first");
+
+  // Self-heals a name/email that came back empty at registration — Google
+  // doesn't always include these claims on every ID token, but re-checking
+  // here is free since the token's already being verified for login anyway.
+  const patch = {};
+  if (name && user.name !== name) patch.name = name;
+  if (email && user.email !== email) patch.email = email;
+  if (Object.keys(patch).length > 0) {
+    user = await db.user.update({ where: { id: user.id }, data: patch });
+  }
 
   const token = await createSession(user.id);
   return { token, user: publicUser(user), ...keyMaterial(user), memberships: await membershipsFor(user.id) };
