@@ -2,7 +2,7 @@
 
 **Status:** Active development (PoC live, in daily use)
 **Author:** Joe McFadden
-**Last updated:** 2026-09-16
+**Last updated:** 2026-09-16 (audited against actual code in this session)
 
 ## 1. Summary
 
@@ -155,6 +155,7 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 7. As a user, I can mark a transaction as "reviewed" so I know I've already looked at it.
 8. As a user, I can see who — me or my partner — added or imported a given transaction.
 9. As a user, I can add a transaction manually in a few taps without needing a statement (built); eventually by just photographing a receipt, gas pump readout, or a Venmo request screenshot (§8.6, roadmap).
+10. As a user, I can jot purchases or budget numbers into a shared spreadsheet tab (Quick Add, built — §8.1) when that's faster than the app, then sync them into the real data with one tap, without a typo there ever being able to corrupt the real Transactions/Budgets data.
 
 ## 8. Functional Requirements (full v1 — beyond PoC)
 
@@ -164,6 +165,8 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 - Support PDF statement upload with text extraction for issuers that only offer PDF statements; flag low-confidence extractions for manual review rather than silently guessing.
 - Deduplicate transactions on import using date + amount + normalized description (+ statement source) to avoid double-counting overlapping statement periods.
 - Support multiple accounts per household (multiple credit cards, plus savings/checking), each statement import tagged to an account.
+- **Quick Add (built)**: a lower-friction alternative to CSV export/upload for purchases that are easier to just type — two dedicated tabs in the backing Google Sheet (`QuickAdd Purchases`: Date/Description/Amount/Account; `QuickAdd Budgets`: Month/Category/Amount) that a user edits directly in Sheets, then syncs into the real Transactions/Budgets tabs with one tap in the app (Accounts screen per account for purchases, Budgets screen for budgets). Runs through the same parsing, dedup, and categorization path as a CSV import, so a typo in the Quick Add tab can't corrupt real data — it just fails validation on sync.
+- **Delete (built)**: an account can be deleted, cascading to all of its transactions; individual transactions can be deleted too. Both are idempotent — retrying a delete that already succeeded (e.g. after a lost response) reports success rather than "not found."
 
 ### 8.2 Categorization
 - Maintain a configurable category list (e.g., Groceries, Dining, Utilities, Transport, Entertainment, Income, Transfer), shared across the household (§5a) — creating/renaming a category is now built (rename added 2026-09-11); deleting one is not yet.
@@ -239,7 +242,7 @@ the budget quietly.
 - **User**: id, username, password_hash — **no `householdId` column** (see §5b: membership is a relationship, not a field on User, so one user can belong to more than one household without a schema change).
 - **HouseholdMember**: householdId, userId, role (`owner` | `member`), joinedAt — the join table that actually links users to households.
 - **Invite**: id, householdId, code, createdByUserId, createdAt, expiresAt (nullable), usedByUserId (nullable) — household-scoped, replacing today's single global `INVITE_CODE`.
-- **Account**: id, householdId, name, type (credit/checking/savings), institution.
+- **Account**: id, householdId, name, type (credit/checking/savings), institution. **Bug, found 2026-09-16**: the live app and backend currently only accept `checking`/`savings` — `credit` was dropped from both `app/src/screens/AccountsScreen.js` and `appscript/Accounts.gs` in the 2026-09-11 commit (e2c7b94) with no mention in that commit's message or anywhere in this PRD. Nothing documents this as an intentional pivot away from credit cards, and it directly contradicts §1/§3's stated primary focus — treated here as a regression to fix, not a decision, until told otherwise (see §15).
 - **Statement Import**: id, account_id, file type, imported_at, source filename, date range covered.
 - **Transaction**: id, householdId, account_id, statement_import_id, date, description (raw + normalized), amount, category_id, reviewed (bool), notes, **createdByUserId**.
 - **Category**: id, householdId, name, parent_category_id (optional, for subcategories).
@@ -349,6 +352,23 @@ Script's Web App model that aren't fixable from our side:
   own unrelated health-check text instead of the real response. Retries
   and idempotency fixes reduced the damage (see git history 2026-09-11) but
   can't eliminate a platform-level reliability ceiling.
+  - **Client-side mitigation layer (built, `app/src/api/client.js`)**: up
+    to 3 attempts per call, but only for actions safe to retry — a
+    non-idempotent write (`accounts.create`, `categories.create`,
+    `transactions.create`) is never auto-retried, since the redirect can
+    fail *after* the row was already written (this happened: a clean
+    create, a 404 on the response, a retry that duplicated the row) — the
+    user instead sees "this may have already gone through, check before
+    retrying." A 401/403 is treated as the access-setting problem below,
+    not a transient failure, and surfaces a distinct message. None of this
+    is a fix for the underlying platform limit, just a way to stop it from
+    silently corrupting data or confusing the user in the meantime.
+  - **In-app diagnostics (built)**: every call logs its outcome and timing
+    to a `ClientLogs` sheet via a fire-and-forget `GET` beacon (deliberately
+    not routed through the same `doPost` path being diagnosed, so a broken
+    `doPost` doesn't also blind the logging), viewable in the app itself
+    via a "Logs" button — added specifically to debug this reliability
+    class of problem live, without needing device console access.
 - **The Web App deployment's "Who has access" setting has repeatedly
   reverted** away from public access — sometimes after a redeploy,
   sometimes with no redeploy at all — and Google's own Apps Script REST API
@@ -379,6 +399,7 @@ setting" to fix once the backend isn't Apps Script.
 
 ## 15. Open Questions
 
+- **Found 2026-09-16 — needs a decision, not just a fix**: `credit` was silently dropped as an account type on 2026-09-11 (see §9), leaving only checking/savings live, with no record of why. Was this an accidental drop while adding account delete in the same commit, or an actual (undocumented) decision to deprioritize credit cards? If the former, restore it; if the latter, §1/§3 need rewriting since "credit cards are the primary focus" is currently this PRD's headline framing.
 - Which card issuers need to be supported first (determines CSV format variety)?
 - Rollover is wanted as a **per-category option**, not a global setting — still open: how does a category switch modes, and what happens to an already-rolled-over balance if that category's flat amount later changes?
 - **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
