@@ -3,6 +3,8 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
+  KeyboardAvoidingView,
+  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -102,7 +104,11 @@ export default function AccountsScreen() {
   }
 
   return (
-    <View style={styles.container}>
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
+    >
       {isPending ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator />
@@ -205,7 +211,7 @@ export default function AccountsScreen() {
           <Text style={styles.addButtonText}>+ Add Account</Text>
         </TouchableOpacity>
       )}
-    </View>
+    </KeyboardAvoidingView>
   );
 }
 
