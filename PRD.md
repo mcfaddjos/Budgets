@@ -2,7 +2,7 @@
 
 **Status:** Active development (PoC live, in daily use)
 **Author:** Joe McFadden
-**Last updated:** 2026-09-11
+**Last updated:** 2026-09-16
 
 ## 1. Summary
 
@@ -174,7 +174,15 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 ### 8.3 Budgeting
 - Allow setting a target budget amount per category per month. Each month starts from its own budget row (already the case in the data model — `Budget` is keyed by category + month), so a new month's transactions are automatically measured against that month's amount, not folded into a running total.
 - **Rollover, as a per-category option** (not an all-or-nothing setting): a category can be marked to carry its unspent balance into next month's budget for that category, while other categories reset to their flat monthly amount. Needs a decision on how a category flips between the two modes, and what happens to a rolled-over balance if the category's budget amount itself changes month to month.
+- **Deficit rollover (negative rollover) — raised 2026-09-16, under discussion, not designed yet.** The rollover bullet above only describes carrying forward an unspent *surplus*; this is the mirror case — if a category ends a month overspent, that deficit reduces next month's budget for the same category instead of resetting clean. Still open:
+  - **Scope**: per-category deficit rollover (mirroring the per-category surplus rollover above), a household-wide total deficit/surplus, or both independently?
+  - **Time horizon — the biggest open question here**: does a deficit roll forward one month at a time (this month's overspend hits only next month, then resets), or should the tracked figure actually be a running **year-to-date surplus/deficit** — "where does the household stand for the year so far" — rather than a single-month carry? These behave very differently: a YTD figure lets a good month recover from a bad one anytime over the rest of the year; a one-month carry hits exactly the following month and then disappears regardless of what happens after.
+  - **Relationship to the surplus-rollover toggle above**: one on/off "rollover" switch per category that carries both directions symmetrically, or separate switches (someone may want to keep unspent grocery money without a bad grocery month permanently chasing next month)?
 - **Variable/seasonal budgets**: since budgets are already per-category-per-month, a category can already be given a different amount in a specific month (e.g., a higher "Presents" budget in September/April/December for birthdays and Christmas) — that part works today. What's missing is a way to *plan* this ahead of time instead of re-entering it by hand each year: e.g., a recurring seasonal override template per category ("bump Presents to $X every September/April/December") that pre-fills those months automatically, with actual values still editable per month.
+- **Custom one-off budget for a large purchase — raised 2026-09-16, under discussion, not designed yet.** Different from the seasonal bullet above, which is a category's *normal* recurring amount changing predictably in known months — this is instead a single ad-hoc budget for one specific large purchase (furniture, an appliance) that doesn't fit an existing category's normal monthly rhythm. Open questions:
+  - Does it need its own category, or a distinct "one-time budget" object outside the category/month model in §9?
+  - **How does it affect the household's monthly surplus/deficit** — counted inside the regular month's surplus/deficit math (so a big purchase can visibly wipe out that month), or tracked separately so it doesn't distort the read on "normal" monthly spending? Depends partly on how deficit rollover (above) is resolved.
+  - If deficit rollover ships, does overspending against a one-time custom budget roll forward the same way a category deficit would, or is a one-time budget explicitly closed with no rollover at all?
 - Support carrying over the previous month's *plain* budget amount as a starting point for the next (distinct from balance rollover above — this is just "don't retype the same number every month" for categories that aren't in rollover mode).
 - Show actual vs. budget with variance ($ and %) per category, and a total.
 - The existing "Left" figure in the Budgets screen's totals row is already the same idea as PocketGuard's most-praised feature, a real-time "Leftover" spendable amount (§12) — validates keeping it prominent rather than burying it, no new build needed here.
@@ -316,7 +324,7 @@ own polish pass, not a feature gap.
 
 - **M0 — PoC (done):** Expo app + shared backend, login, CSV credit-card import, categorization, budget vs. actual — see §6.
 - **M1 — Import & Categorize (full):** OFX import, PDF import, dedup hardening, bulk re-categorization.
-- **M2 — Budgeting:** per-category rollover option, seasonal budget templates (e.g. recurring Sept/Apr/Dec "Presents" bump), carry-forward of flat budget amounts, multi-account rollups.
+- **M2 — Budgeting:** per-category rollover option, seasonal budget templates (e.g. recurring Sept/Apr/Dec "Presents" bump), carry-forward of flat budget amounts, multi-account rollups. Deficit (negative) rollover and one-off custom budgets for large purchases (§8.3) are candidates for this milestone too, but need the open design questions there resolved first — not yet scoped.
 - **M3 — Reconciliation & Reporting:** flagging dashboard, monthly report archive, trend reports, exports, per-person breakdown.
 - **M4 — Backend migration (§14a):** off Apps Script/Sheets onto a real HTTP host + database, with the security hardening in §10 as part of the same move.
 - **M5 — Shared household model (§5a):** household-scoped data, per-transaction attribution, household-aware invite/registration.
@@ -373,6 +381,8 @@ setting" to fix once the backend isn't Apps Script.
 
 - Which card issuers need to be supported first (determines CSV format variety)?
 - Rollover is wanted as a **per-category option**, not a global setting — still open: how does a category switch modes, and what happens to an already-rolled-over balance if that category's flat amount later changes?
+- **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
+- **Custom one-off large-purchase budget (§8.3, raised 2026-09-16)**: does it live in the category/month budget model or as its own object, and does it count toward or sit outside the month's regular surplus/deficit total? Depends on how deficit rollover above is resolved.
 - Seasonal budgets already work manually (set a different amount for a category in a given month) — open: what does a reusable "recurring seasonal override" template actually look like (which months, which categories, does it auto-apply or just pre-fill for review)?
 - Monthly reports: archived snapshot per past month, or always recomputed live from current data? Affects whether a later edit to a past transaction should retroactively change an old month's report.
 - §5a: is "created by" alone enough attribution, or will a fuller edit history matter later?
