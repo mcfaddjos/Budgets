@@ -3,9 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -15,6 +12,7 @@ import {
 } from "react-native";
 import { useBudgetSummary, useCreateCategory, useSetBudget, useUpdateCategory } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
+import FormModal from "../components/FormModal";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -154,67 +152,46 @@ export default function BudgetsScreen() {
         />
       )}
 
-      <Modal visible={!!editing} transparent animationType="fade" onRequestClose={() => setEditing(null)}>
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-        >
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Edit category</Text>
-            <Text style={styles.label}>Name</Text>
-            <TextInput style={styles.input} value={nameInput} onChangeText={setNameInput} placeholder="Category name" />
-            <Text style={styles.label}>Budget</Text>
-            <TextInput
-              style={styles.input}
-              value={amountInput}
-              onChangeText={setAmountInput}
-              keyboardType="decimal-pad"
-              placeholder="0.00"
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => setEditing(null)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleSaveBudget} disabled={savingBudget}>
-                <Text style={styles.primaryButtonText}>{savingBudget ? "Saving…" : "Save"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <FormModal visible={!!editing} onClose={() => setEditing(null)}>
+        <Text style={styles.modalTitle}>Edit category</Text>
+        <Text style={styles.label}>Name</Text>
+        <TextInput style={styles.input} value={nameInput} onChangeText={setNameInput} placeholder="Category name" />
+        <Text style={styles.label}>Budget</Text>
+        <TextInput
+          style={styles.input}
+          value={amountInput}
+          onChangeText={setAmountInput}
+          keyboardType="decimal-pad"
+          placeholder="0.00"
+        />
+        <View style={styles.modalActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setEditing(null)}>
+            <Text style={styles.secondaryButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleSaveBudget} disabled={savingBudget}>
+            <Text style={styles.primaryButtonText}>{savingBudget ? "Saving…" : "Save"}</Text>
+          </TouchableOpacity>
+        </View>
+      </FormModal>
 
-      <Modal
-        visible={addCategoryVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setAddCategoryVisible(false)}
-      >
-        <KeyboardAvoidingView
-          style={styles.modalBackdrop}
-          behavior={Platform.OS === "ios" ? "padding" : "height"}
-          keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-        >
-          <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>New category</Text>
-            <TextInput
-              style={styles.input}
-              value={newCategoryName}
-              onChangeText={setNewCategoryName}
-              placeholder="e.g. Presents"
-              autoFocus
-            />
-            <View style={styles.modalActions}>
-              <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddCategoryVisible(false)}>
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={styles.primaryButton} onPress={handleAddCategory} disabled={savingCategory}>
-                <Text style={styles.primaryButtonText}>{savingCategory ? "Saving…" : "Save"}</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </KeyboardAvoidingView>
-      </Modal>
+      <FormModal visible={addCategoryVisible} onClose={() => setAddCategoryVisible(false)}>
+        <Text style={styles.modalTitle}>New category</Text>
+        <TextInput
+          style={styles.input}
+          value={newCategoryName}
+          onChangeText={setNewCategoryName}
+          placeholder="e.g. Presents"
+          autoFocus
+        />
+        <View style={styles.modalActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setAddCategoryVisible(false)}>
+            <Text style={styles.secondaryButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleAddCategory} disabled={savingCategory}>
+            <Text style={styles.primaryButtonText}>{savingCategory ? "Saving…" : "Save"}</Text>
+          </TouchableOpacity>
+        </View>
+      </FormModal>
 
       <AddTransactionModal
         visible={addTxVisible}
@@ -269,8 +246,6 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   addCategoryButtonText: { color: "#1a6ed8", fontWeight: "600" },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center", padding: 24 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 20 },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
   label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 6 },
   input: {

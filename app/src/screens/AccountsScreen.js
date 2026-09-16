@@ -3,8 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   FlatList,
-  KeyboardAvoidingView,
-  Platform,
   RefreshControl,
   StyleSheet,
   Text,
@@ -15,6 +13,7 @@ import {
 import { useAccounts, useCreateAccount, useDeleteAccount } from "../data/queries";
 import { useAuth } from "../context/AuthContext";
 import CsvImportModal from "../components/CsvImportModal";
+import FormModal from "../components/FormModal";
 
 const ACCOUNT_TYPES = ["credit", "checking", "savings"];
 
@@ -104,11 +103,7 @@ export default function AccountsScreen() {
   }
 
   return (
-    <KeyboardAvoidingView
-      style={styles.container}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-      keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-    >
+    <View style={styles.container}>
       {isPending ? (
         <View style={styles.loadingBox}>
           <ActivityIndicator />
@@ -156,62 +151,59 @@ export default function AccountsScreen() {
         onImported={() => setImportAccountId(null)}
       />
 
-      {showForm ? (
-        <View style={styles.form}>
-          <TextInput
-            style={styles.input}
-            placeholder="Account name (e.g. Amex Gold)"
-            value={name}
-            onChangeText={setName}
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Institution (optional)"
-            value={institution}
-            onChangeText={setInstitution}
-          />
-          <View style={styles.typeRow}>
-            {ACCOUNT_TYPES.map((t) => (
-              <TouchableOpacity
-                key={t}
-                style={[styles.typeButton, type === t && styles.typeButtonActive]}
-                onPress={() => setType(t)}
-              >
-                <Text style={[styles.typeButtonText, type === t && styles.typeButtonTextActive]}>
-                  {t}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <Text style={styles.label}>Owners</Text>
-          <View style={styles.chipRow}>
-            {members.map((m) => (
-              <TouchableOpacity
-                key={m.userId}
-                style={[styles.chip, ownerUserIds.includes(m.userId) && styles.chipActive]}
-                onPress={() => toggleOwner(m.userId)}
-              >
-                <Text style={[styles.chipText, ownerUserIds.includes(m.userId) && styles.chipTextActive]}>
-                  {memberLabel(m.userId)}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-          <View style={styles.formActions}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowForm(false)}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
+      <TouchableOpacity style={styles.addButton} onPress={() => setShowForm(true)}>
+        <Text style={styles.addButtonText}>+ Add Account</Text>
+      </TouchableOpacity>
+
+      <FormModal visible={showForm} onClose={() => setShowForm(false)}>
+        <Text style={styles.modalTitle}>Add account</Text>
+        <TextInput
+          style={styles.input}
+          placeholder="Account name (e.g. Amex Gold)"
+          value={name}
+          onChangeText={setName}
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Institution (optional)"
+          value={institution}
+          onChangeText={setInstitution}
+        />
+        <View style={styles.typeRow}>
+          {ACCOUNT_TYPES.map((t) => (
+            <TouchableOpacity
+              key={t}
+              style={[styles.typeButton, type === t && styles.typeButtonActive]}
+              onPress={() => setType(t)}
+            >
+              <Text style={[styles.typeButtonText, type === t && styles.typeButtonTextActive]}>{t}</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={styles.primaryButton} onPress={handleAddAccount}>
-              <Text style={styles.primaryButtonText}>Save</Text>
-            </TouchableOpacity>
-          </View>
+          ))}
         </View>
-      ) : (
-        <TouchableOpacity style={styles.addButton} onPress={() => setShowForm(true)}>
-          <Text style={styles.addButtonText}>+ Add Account</Text>
-        </TouchableOpacity>
-      )}
-    </KeyboardAvoidingView>
+        <Text style={styles.label}>Owners</Text>
+        <View style={styles.chipRow}>
+          {members.map((m) => (
+            <TouchableOpacity
+              key={m.userId}
+              style={[styles.chip, ownerUserIds.includes(m.userId) && styles.chipActive]}
+              onPress={() => toggleOwner(m.userId)}
+            >
+              <Text style={[styles.chipText, ownerUserIds.includes(m.userId) && styles.chipTextActive]}>
+                {memberLabel(m.userId)}
+              </Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+        <View style={styles.formActions}>
+          <TouchableOpacity style={styles.secondaryButton} onPress={() => setShowForm(false)}>
+            <Text style={styles.secondaryButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.primaryButton} onPress={handleAddAccount}>
+            <Text style={styles.primaryButtonText}>Save</Text>
+          </TouchableOpacity>
+        </View>
+      </FormModal>
+    </View>
   );
 }
 
@@ -264,7 +256,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   addButtonText: { color: "#fff", fontWeight: "600", fontSize: 16 },
-  form: { margin: 16, marginTop: 0, backgroundColor: "#fff", borderRadius: 12, padding: 16 },
+  modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
   input: {
     borderWidth: 1,
     borderColor: "#ddd",

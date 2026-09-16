@@ -1,17 +1,7 @@
 import { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Alert,
-  KeyboardAvoidingView,
-  Modal,
-  Platform,
-  StyleSheet,
-  Text,
-  TextInput,
-  TouchableOpacity,
-  View,
-} from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { useCreateManualTransaction, useTransactionFormOptions } from "../data/queries";
+import FormModal from "./FormModal";
 
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
@@ -73,102 +63,90 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
   }
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <KeyboardAvoidingView
-        style={styles.modalBackdrop}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 24}
-      >
-        <View style={styles.modalCard}>
-          <Text style={styles.modalTitle}>Add transaction</Text>
+    <FormModal visible={visible} onClose={onClose}>
+      <Text style={styles.modalTitle}>Add transaction</Text>
 
-          {isPending ? (
-            <View style={styles.loadingBox}>
-              <ActivityIndicator />
-              <Text style={styles.loadingText}>Loading accounts and categories…</Text>
-            </View>
-          ) : isError ? (
-            <View style={styles.loadingBox}>
-              <Text style={styles.errorText}>{error.message}</Text>
-              <TouchableOpacity style={styles.retryButton} onPress={refetch}>
-                <Text style={styles.retryButtonText}>Retry</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <>
-              {accounts.length > 1 ? (
-                <>
-                  <Text style={styles.label}>Account</Text>
-                  <View style={styles.chipRow}>
-                    {accounts.map((a) => (
-                      <TouchableOpacity
-                        key={a.id}
-                        style={[styles.chip, accountId === a.id && styles.chipActive]}
-                        onPress={() => setAccountId(a.id)}
-                      >
-                        <Text style={[styles.chipText, accountId === a.id && styles.chipTextActive]}>
-                          {a.name}
-                        </Text>
-                      </TouchableOpacity>
-                    ))}
-                  </View>
-                </>
-              ) : null}
-
-              <TextInput
-                style={styles.input}
-                value={amount}
-                onChangeText={setAmount}
-                keyboardType="decimal-pad"
-                placeholder="Amount (e.g. 12.50)"
-              />
-              <TextInput
-                style={styles.input}
-                value={description}
-                onChangeText={setDescription}
-                placeholder="Description (optional)"
-              />
-
-              <Text style={styles.label}>Category</Text>
-              {categories.length === 0 ? (
-                <Text style={styles.empty}>No categories yet.</Text>
-              ) : (
-                <View style={styles.chipRow}>
-                  {categories.map((c) => (
-                    <TouchableOpacity
-                      key={c.id}
-                      style={[styles.chip, categoryId === c.id && styles.chipActive]}
-                      onPress={() => setCategoryId(c.id)}
-                    >
-                      <Text style={[styles.chipText, categoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </>
-          )}
-
-          <View style={styles.formActions}>
-            <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
-              <Text style={styles.secondaryButtonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handleSave}
-              disabled={createTransaction.isPending || isPending || isError}
-            >
-              <Text style={styles.primaryButtonText}>{createTransaction.isPending ? "Saving…" : "Save"}</Text>
-            </TouchableOpacity>
-          </View>
+      {isPending ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator />
+          <Text style={styles.loadingText}>Loading accounts and categories…</Text>
         </View>
-      </KeyboardAvoidingView>
-    </Modal>
+      ) : isError ? (
+        <View style={styles.loadingBox}>
+          <Text style={styles.errorText}>{error.message}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={refetch}>
+            <Text style={styles.retryButtonText}>Retry</Text>
+          </TouchableOpacity>
+        </View>
+      ) : (
+        <>
+          {accounts.length > 1 ? (
+            <>
+              <Text style={styles.label}>Account</Text>
+              <View style={styles.chipRow}>
+                {accounts.map((a) => (
+                  <TouchableOpacity
+                    key={a.id}
+                    style={[styles.chip, accountId === a.id && styles.chipActive]}
+                    onPress={() => setAccountId(a.id)}
+                  >
+                    <Text style={[styles.chipText, accountId === a.id && styles.chipTextActive]}>{a.name}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </>
+          ) : null}
+
+          <TextInput
+            style={styles.input}
+            value={amount}
+            onChangeText={setAmount}
+            keyboardType="decimal-pad"
+            placeholder="Amount (e.g. 12.50)"
+          />
+          <TextInput
+            style={styles.input}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Description (optional)"
+          />
+
+          <Text style={styles.label}>Category</Text>
+          {categories.length === 0 ? (
+            <Text style={styles.empty}>No categories yet.</Text>
+          ) : (
+            <View style={styles.chipRow}>
+              {categories.map((c) => (
+                <TouchableOpacity
+                  key={c.id}
+                  style={[styles.chip, categoryId === c.id && styles.chipActive]}
+                  onPress={() => setCategoryId(c.id)}
+                >
+                  <Text style={[styles.chipText, categoryId === c.id && styles.chipTextActive]}>{c.name}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          )}
+        </>
+      )}
+
+      <View style={styles.formActions}>
+        <TouchableOpacity style={styles.secondaryButton} onPress={onClose}>
+          <Text style={styles.secondaryButtonText}>Cancel</Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={handleSave}
+          disabled={createTransaction.isPending || isPending || isError}
+        >
+          <Text style={styles.primaryButtonText}>{createTransaction.isPending ? "Saving…" : "Save"}</Text>
+        </TouchableOpacity>
+      </View>
+    </FormModal>
   );
 }
 
 const styles = StyleSheet.create({
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center", padding: 24 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 20, maxHeight: "80%" },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
   label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 8 },
   input: {
