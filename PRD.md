@@ -173,12 +173,13 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 - Auto-categorize on import using: (a) household-defined merchant/description rules, (b) a default keyword-based ruleset shipped with the app, (c) fallback to "Uncategorized."
 - Allow bulk re-categorization (select multiple transactions → assign category).
 - Learn from manual corrections by prompting "Always categorize [merchant] as [category]?" and saving as a rule.
-- **Split transactions (e.g. one grocery run: food vs. drinks) — raised 2026-09-16, under discussion, not designed yet.** Today a `Transaction` has exactly one `categoryId`; the ask is to let a single purchase span more than one category (part groceries, part alcohol, on one receipt) instead of forcing the whole amount into one bucket. Open questions:
+- **Split transactions (e.g. one grocery run: groceries vs. alcohol vs. "outside food"/prepared items vs. general shopping) — raised 2026-09-16, refined 2026-09-17, under discussion, not designed yet.** Today a `Transaction` has exactly one `categoryId`; the ask is to let a single purchase span more than one category instead of forcing the whole amount into one bucket — a single grocery-store receipt routinely mixes categories a household actually wants tracked separately (alcohol, a deli/hot-food counter item that's really "dining" not "groceries," a random household-goods impulse buy that's really "shopping"). Open questions:
   - **Data model**: does a `Transaction` gain a set of line items (each its own category + amount, summing to the transaction total) for split rows specifically, or is a "split" actually two-or-more ordinary transaction rows tied together (parent/child, or a shared `splitGroupId`)? These differ in how dedup, CSV re-import, and the `reviewed` flag apply — a line-item model keeps one dedup key per real-world purchase; a multi-row model needs a new way to dedup the group as a whole.
   - **Where a split gets created**: a CSV/statement line is one row with one amount, so a split can't be inferred from the source data — is it only ever a manual edit after import, or does the Add Transaction modal (manual entry) support entering a split directly too?
   - **Interaction with category rules**: today's rule is one merchant → one category (§8.2 above). A merchant that sometimes splits (a grocery run with wine) and sometimes doesn't doesn't fit that cleanly — does a split simply opt out of rule-based auto-categorization and always require manual entry, or does a merchant need its own "usually splits this way" template?
   - **Budget rollup**: each split portion should count toward its own category's actual spend in §8.3 (the natural reading) — needs to be explicit, since every existing actual-vs-budget query currently assumes one `categoryId` per transaction row.
   - **Raised explicitly as a scale concern, not just a v1 design detail**: as the household/multi-household model (§5a/§5b) grows the number of households, each with its own custom category list, a split-entry UI needs to hold up once a household has accumulated many custom categories (a searchable/filterable picker, not a short fixed list) — and there's no shared default template to lean on for "typically splits like this" once two households' category sets don't resemble each other at all.
+  - **Directly in tension with §8.6's receipt-capture scope, not just a coincidence**: the household's stated motivating case (splitting a grocery receipt into groceries/alcohol/outside-food/shopping) is exactly the kind of receipt that §8.6's "explicitly not attempting full itemized receipt parsing" non-goal was written to avoid. If receipt capture ships before splitting a single-line manual/CSV transaction does, receipt capture's pre-filled Add Transaction form would need to support entering a split directly (not just after the fact) for the feature to actually cover its own motivating use case — see the added note in §8.6.
 
 ### 8.3 Budgeting
 - Allow setting a target budget amount per category per month. Each month starts from its own budget row (already the case in the data model — `Budget` is keyed by category + month), so a new month's transactions are automatically measured against that month's amount, not folded into a running total.
@@ -237,7 +238,16 @@ the budget quietly.
   later (tax records, disputing a charge) in a way pure OCR output isn't.
 - Explicitly **not** attempting full itemized receipt parsing (line items,
   tax breakdown) for v1 — just enough to log one transaction at the
-  receipt's total.
+  receipt's total. **Now genuinely in tension, flagged 2026-09-17**: the
+  household's own motivating example for split transactions (§8.2) is a
+  grocery receipt that mixes groceries, alcohol, prepared/"outside" food,
+  and general shopping — precisely the shape of receipt this non-goal was
+  written to avoid parsing. Doesn't have to mean OCR itemizes every line;
+  it does mean the pre-filled Add Transaction form this feature hands the
+  user needs to support entering a split *before* saving, not just editing
+  one in afterward — otherwise a receipt-captured transaction is a step
+  backward from one entered any other way, right at the case this feature
+  exists for. Resolve alongside §8.2, not independently.
 - Needs a decision on where extraction actually runs (on-device vs. a
   server-side call) once the backend migration (§14a) is further along,
   since the answer may depend on what the new backend looks like.
@@ -408,7 +418,7 @@ setting" to fix once the backend isn't Apps Script.
 ## 15. Open Questions
 
 - **Found 2026-09-16 — needs a decision, not just a fix**: `credit` was silently dropped as an account type on 2026-09-11 (see §9), leaving only checking/savings live, with no record of why. Was this an accidental drop while adding account delete in the same commit, or an actual (undocumented) decision to deprioritize credit cards? If the former, restore it; if the latter, §1/§3 need rewriting since "credit cards are the primary focus" is currently this PRD's headline framing.
-- **Split transactions (§8.2, raised 2026-09-16)**: line-items-on-one-row vs. linked multiple rows — needs deciding before any schema work, since it changes how dedup and budget rollup both work. Also needs a stance on whether split entry is manual-only or something the Add Transaction modal supports directly.
+- **Split transactions (§8.2, raised 2026-09-16, refined 2026-09-17)**: line-items-on-one-row vs. linked multiple rows — needs deciding before any schema work, since it changes how dedup and budget rollup both work. Also needs a stance on whether split entry is manual-only or something the Add Transaction modal supports directly — this now has a forcing function, not just a nice-to-have: §8.6's receipt capture is explicitly motivated by the same real-world case (a grocery receipt spanning groceries/alcohol/outside-food/shopping), so whichever ships first, the two need a shared answer rather than two independent ones.
 - Which card issuers need to be supported first (determines CSV format variety)?
 - Rollover is wanted as a **per-category option**, not a global setting — still open: how does a category switch modes, and what happens to an already-rolled-over balance if that category's flat amount later changes?
 - **Deficit rollover (§8.3, raised 2026-09-16)**: is it a one-month-at-a-time carry of last month's overspend, or should "deficit" actually mean a running year-to-date surplus/deficit figure for the household? These are different features, not different settings on the same feature, and need to be decided before design starts.
