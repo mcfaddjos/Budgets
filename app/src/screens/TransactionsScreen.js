@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { api } from "../api/client";
 import AddTransactionModal from "../components/AddTransactionModal";
+import { shadowCard, shadowModal } from "../theme";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -205,6 +206,7 @@ const styles = StyleSheet.create({
     padding: 12,
     marginBottom: 8,
     gap: 10,
+    ...shadowCard,
   },
   rowMain: { flex: 1 },
   description: { fontSize: 15, fontWeight: "500" },
@@ -214,7 +216,7 @@ const styles = StyleSheet.create({
   amountCredit: { color: "#2a8a4a" },
   category: { fontSize: 12, color: "#1a6ed8", marginTop: 2 },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "flex-end" },
-  modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: "60%" },
+  modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: "60%", ...shadowModal },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8 },
   modalItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
   modalItemText: { fontSize: 16 },

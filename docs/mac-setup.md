@@ -129,6 +129,32 @@ Same Expo account (`joe.jmcf`), same project (`@joe.jmcf/app`,
 only new step. The build runs on Expo's servers regardless of which
 machine kicks it off.
 
+## 6a. EAS (iOS Simulator build)
+
+```bash
+cd app
+eas build --platform ios --profile preview
+```
+
+`app.json` now has an `ios.bundleIdentifier` (`com.mcfaddjos.budgets`) and
+`eas.json`'s `development`/`preview` profiles set `ios.simulator: true` —
+this builds a `.app` for the iOS **Simulator only** and needs **no Apple
+Developer account**, unlike a real-device or App Store build (which needs
+a signing certificate/provisioning profile, which needs a paid Apple
+Developer Program enrollment — not set up yet). Once the build finishes,
+drag the downloaded `.app` onto a running Simulator window, or run
+`eas build:run --platform ios` to launch it automatically. This is the
+Simulator-only equivalent of the Android APK above — good for verifying
+the standalone (non-Expo-Go) build works and for the iOS-specific styling
+pass (shared card/modal shadow tokens in `app/src/theme.js`, since iOS and
+Android render shadows completely differently), but it's not something to
+hand the iPhone user to install — that still needs `production`, which
+will prompt for real Apple credentials when actually run.
+
+The `production` profile is untouched (no `ios.simulator`) since an actual
+App Store / TestFlight build has to be signed — that's the step blocked on
+enrolling in the Apple Developer Program.
+
 ## 7. What's where
 
 - `app/` — the Expo/React Native app (both phones run this).

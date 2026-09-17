@@ -12,6 +12,7 @@ import {
 } from "react-native";
 import * as DocumentPicker from "expo-document-picker";
 import { api } from "../api/client";
+import { shadowCard } from "../theme";
 
 const ACCOUNT_TYPES = ["checking", "savings"];
 
@@ -233,10 +234,7 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOpacity: 0.05,
-    shadowRadius: 4,
-    elevation: 1,
+    ...shadowCard,
   },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   cardHeaderRight: { flexDirection: "row", alignItems: "center", gap: 12 },

@@ -13,6 +13,7 @@ import {
 } from "react-native";
 import { api } from "../api/client";
 import AddTransactionModal from "../components/AddTransactionModal";
+import { shadowCard, shadowModal } from "../theme";
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -294,7 +295,7 @@ const styles = StyleSheet.create({
   statLabel: { fontSize: 12, color: "#999" },
   statValue: { fontSize: 18, fontWeight: "700", marginTop: 2 },
   list: { padding: 16 },
-  card: { backgroundColor: "#fff", borderRadius: 10, padding: 14, marginBottom: 10 },
+  card: { backgroundColor: "#fff", borderRadius: 10, padding: 14, marginBottom: 10, ...shadowCard },
   cardHeader: { flexDirection: "row", justifyContent: "space-between", marginBottom: 8 },
   cardTitle: { fontSize: 15, fontWeight: "600" },
   cardAmounts: { fontSize: 13, color: "#666" },
@@ -310,7 +311,7 @@ const styles = StyleSheet.create({
   },
   addCategoryButtonText: { color: "#1a6ed8", fontWeight: "600" },
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center", padding: 24 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 20 },
+  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 20, ...shadowModal },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
   label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 6 },
   input: {

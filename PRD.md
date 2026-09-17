@@ -338,12 +338,14 @@ own polish pass, not a feature gap.
 - **M4 — Backend migration (§14a):** off Apps Script/Sheets onto a real HTTP host + database, with the security hardening in §10 as part of the same move.
 - **M5 — Shared household model (§5a):** household-scoped data, per-transaction attribution, household-aware invite/registration.
 - **M6 — Receipt & photo capture (§8.6).**
-- **M7 (stretch) — push notifications for large transactions, iOS standalone build (§14).**
+- **M7 (stretch) — push notifications for large transactions, iOS standalone build (§14, Simulator build now working, real-device build blocked on an Apple Developer account).**
 
 ## 14. Backend & Platform History
 
 - ~~Where should the backend run?~~ **(2026-09-09)** Google Apps Script Web App bound to a Google Sheet acting as the database — see `appscript/` and the top-level `README.md`. Chosen specifically so neither user needs a computer to stay on.
 - ~~Expo Go vs. app-store-style distribution?~~ **(2026-09-11)** Standalone builds via `eas build` (Android APK sideload first; iPhone needs a paid Apple Developer account, not done yet).
+- **iOS build pipeline prepped (2026-09-17)**: `app.json` now declares `ios.bundleIdentifier` (`com.mcfaddjos.budgets`), and `eas.json`'s `development`/`preview` profiles set `ios.simulator: true` — an iOS Simulator build now works via `eas build --platform ios --profile preview`, verified to bundle cleanly (`expo export --platform ios`). This needs **no Apple Developer account** (only a real-device/App Store build does), so it's real progress but not yet something to hand the iPhone user — see `docs/mac-setup.md` §6a. Also standardized card/modal shadow styling across screens into `app/src/theme.js` (`shadowCard`/`shadowModal`): the previous per-screen shadow styles were inconsistent (Accounts had one, Budgets/Transactions had none at all) and, where present, omitted `shadowOffset` — iOS defaults that to `{0,0}` and renders an evenly-diffused glow instead of a card lifted off the page, unlike Android's `elevation` which computes its own directional shadow regardless. Actual on-device/Simulator visual verification still hasn't happened (no Mac/Xcode available in this session) — treat the styling as a best-effort correction pending a real look on iOS.
+- Also found and fixed in passing: `app/package.json` lists `react-native-safe-area-context` as a dependency, but a fresh `npm install` in this session's environment showed it wasn't actually installed (missing from `node_modules`), which broke `expo export` entirely on both platforms. Not a code bug — just `npm install` not having been re-run in this environment since that dependency was added — but worth knowing if a fresh clone/session hits the same "Unable to resolve module" error.
 
 ### 14a. Why the backend is being migrated off Apps Script (decision, 2026-09-11)
 

@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import { api } from "../api/client";
+import { shadowModal } from "../theme";
 
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
@@ -163,7 +164,7 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
 
 const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "center", padding: 24 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 20, maxHeight: "80%" },
+  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 20, maxHeight: "80%", ...shadowModal },
   modalTitle: { fontSize: 16, fontWeight: "700", marginBottom: 12 },
   label: { fontSize: 13, fontWeight: "600", color: "#333", marginBottom: 8 },
   input: {

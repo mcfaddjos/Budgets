@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Alert, Modal, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
 import { api } from "../api/client";
+import { shadowModal } from "../theme";
 
 export default function DebugLogsModal({ visible, onClose }) {
   const [logs, setLogs] = useState([]);
@@ -58,7 +59,7 @@ export default function DebugLogsModal({ visible, onClose }) {
 
 const styles = StyleSheet.create({
   modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.4)", justifyContent: "center", padding: 20 },
-  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 16, maxHeight: "85%" },
+  modalCard: { backgroundColor: "#fff", borderRadius: 12, padding: 16, maxHeight: "85%", ...shadowModal },
   header: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 },
   title: { fontSize: 16, fontWeight: "700" },
   refresh: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
