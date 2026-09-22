@@ -30,8 +30,12 @@ yarn-error.*
 .DS_Store
 *.pem
 
-# local env files
+# local env files — app/.env is deliberately un-ignored below: every
+# value in it is a public OAuth client ID or the already-public Render
+# URL, nothing secret (see backend/.env, kept ignored, for the one file
+# that actually holds a credential — a Neon DB password).
 .env
+!.env
 .env*.local
 
 # typescript

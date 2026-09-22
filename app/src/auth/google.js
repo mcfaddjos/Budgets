@@ -14,8 +14,13 @@ function ensureConfigured() {
   }
   // webClientId (not an Android/iOS-specific client) so the resulting
   // idToken's audience matches the single GOOGLE_CLIENT_ID the server
-  // verifies against, regardless of which platform issued it.
-  GoogleSignin.configure({ webClientId });
+  // verifies against, regardless of which platform issued it. iosClientId
+  // is a second, iOS-only requirement on top of that — the library needs
+  // it to drive the native iOS sign-in sheet at all, even though the
+  // token it returns is still scoped to webClientId above. Undefined on
+  // Android (and harmless if unset — sign-in there never reads it).
+  const iosClientId = process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID;
+  GoogleSignin.configure({ webClientId, iosClientId });
   configured = true;
 }
 
