@@ -30,7 +30,12 @@
     "owner": "joe.jmcf",
     "plugins": [
       "react-native-libsodium",
-      "@react-native-google-signin/google-signin",
+      [
+        "@react-native-google-signin/google-signin",
+        {
+          "iosUrlScheme": "com.googleusercontent.apps.73352269798-t46f5bjtq43m7kto7b7cnfqbg8p0uijp"
+        }
+      ],
       "expo-secure-store"
     ]
   }
