@@ -2,7 +2,7 @@
 
 **Status:** Active development (PoC live, in daily use)
 **Author:** Joe McFadden
-**Last updated:** 2026-09-23 (receipt itemization designed: Azure Document Intelligence for receipts + vision-LLM fallback for gas pumps/payment screenshots, embedded line items on the transaction, client-embedded API keys — see §8.6)
+**Last updated:** 2026-09-23 (receipt itemization designed: Azure Document Intelligence for receipts + vision-LLM fallback for gas pumps/payment screenshots, embedded line items on the transaction, client-embedded API keys, optional household-wide receipt-image retention for tax records — see §8.6)
 
 ## 1. Summary
 
@@ -363,12 +363,38 @@ multiple budget categories" version of this idea.
   "alcohol" vs. "groceries" within one Target run) — building the field
   in now avoids a second migration once that's ready to design for real,
   at essentially no cost today.
-- The raw photo is still **consumed, not stored** (decision, 2026-09-15,
-  unchanged) — only the extracted structured data (items, tax, tip,
-  vendor, date, category) is saved, encrypted like everything else under
-  §10a; the image itself is discarded once extraction completes, never
-  persisted anywhere. What's new isn't keeping the photo — it's that the
-  *extracted* data is now much richer than a bare amount.
+- **Optional image retention (decision, 2026-09-23 — reverses the
+  2026-09-15 "consumed, not stored" decision)**: a **household-level
+  setting** ("Keep receipt images"), off by default, controls whether a
+  capture also saves the encrypted image after extraction, for tax
+  records — applies uniformly to all three input types (a gas station
+  receipt is a real mileage/tax document too, not just standard
+  receipts). This is a **global** setting, not a per-capture choice — one
+  toggle in Settings, not a checkbox shown every time.
+  - **Storage**: a new `TransactionReceiptImage` row (transactionId,
+    encryptedData, nonce), 1:1 with the transaction it belongs to,
+    encrypted the same way as every other field (§10a) — the image is
+    just a larger payload through the *same* `encryptRecord`/
+    `decryptRecord` pipeline already used for text fields, not a new
+    crypto primitive. Kept as its own table, not embedded in
+    `Transaction.encryptedData`, so listing transactions never pulls
+    image bytes — only fetched on demand when a user actually opens a
+    transaction's receipt view.
+  - **Where it lives**: stored directly in Postgres (base64 in a `Text`
+    column) — genuinely fine at household scale (dozens to low hundreds
+    of receipts a year). Object storage (e.g. Cloudflare R2) is a later
+    upgrade only if this ever became a much higher-volume product, not a
+    v1 concern.
+  - **Data ownership**: since §10's "a user can export or delete all
+    their data at any time" requirement already exists, retained receipt
+    images need to be included in any future export/delete-all
+    implementation, not just the structured transaction fields.
+  - When the setting is off (the default), behavior is unchanged from
+    the original decision — the image is discarded immediately after
+    extraction, never persisted anywhere. What's genuinely new either
+    way: the *extracted* structured data (items/tax/tip) is now much
+    richer than a bare amount, independent of whether the photo itself
+    is also kept.
 - **Extraction location, resolved by §10a, reaffirmed 2026-09-23**: the
   image goes straight from the device to Azure/the vision-LLM — never
   proxied through our own backend, consistent with the API-key decision
@@ -483,6 +509,8 @@ this list.
 - **Account**: id, householdId, name, type (credit/checking/savings), institution, **ownerUserIds** (2026-09-16 — a plaintext list of member user ids; one for a personal account like a single credit card, more than one for something shared like a household savings account; validated server-side to actually be members of the account's household).
 - **Statement Import**: id, account_id, file type, imported_at, source filename, date range covered.
 - **Transaction**: id, householdId, account_id, statement_import_id, date, description (raw + normalized), amount, category_id, reviewed (bool), notes, **createdByUserId**, **items** (2026-09-23 — nullable array of `{ name, amount, categoryId }`, populated by receipt itemization per §8.6; `categoryId` exists now but unused by budget math/UI until per-item categorization is designed, §8.2), **tax**, **tip** (2026-09-23 — nullable, from itemized receipts).
+- **TransactionReceiptImage** (§8.6, 2026-09-23): transactionId (1:1, cascades on transaction delete), encryptedData, nonce, createdAt — only created when the household's "Keep receipt images" setting is on; a separate table/fetch so listing transactions never loads image bytes.
+- **Household** gains a plaintext **keepReceiptImages** boolean setting (§8.6, 2026-09-23, default false) — not financial content, so no encryption needed, same reasoning as `Account.ownerUserIds`.
 - **Category**: id, householdId, name, parent_category_id (optional, for subcategories).
 - **Category Rule**: id, householdId, match_pattern (merchant/keyword), category_id.
 - **Budget**: id, householdId, category_id, month, amount.
