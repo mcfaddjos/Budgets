@@ -75,8 +75,26 @@ describe("recovery key", () => {
 });
 
 describe("device pairing", () => {
+  test("generates an 8-character code split into a 4-char lookup and a 4-char secret, from the Crockford alphabet", async () => {
+    const { lookup, secret, code } = await keys.generatePairingCode();
+    expect(lookup).toHaveLength(4);
+    expect(secret).toHaveLength(4);
+    expect(code).toBe(lookup + secret);
+    expect(code).toMatch(/^[0-9A-HJ-KM-NP-TV-Z]{8}$/); // Crockford base32 — no I/L/O/U
+  });
+
+  test("parsePairingCode splits a typed code back into the same lookup/secret halves, tolerating case and stray characters", () => {
+    expect(keys.parsePairingCode("ab3k-9f2m")).toEqual({ lookup: "AB3K", secret: "9F2M" });
+    expect(keys.parsePairingCode(" AB3K9F2M ")).toEqual({ lookup: "AB3K", secret: "9F2M" });
+  });
+
+  test("parsePairingCode rejects the wrong length", () => {
+    expect(() => keys.parsePairingCode("AB3K9F2")).toThrow();
+    expect(() => keys.parsePairingCode("AB3K9F2MM")).toThrow();
+  });
+
   test("the joining device's MAC verifies on the granting device using the same out-of-band secret", async () => {
-    const secret = await keys.generatePairingSecret();
+    const { secret } = await keys.generatePairingCode();
     const { forServer } = await keys.createUserKeyMaterial("new device's own vault secret");
 
     const mac = keys.computePairingMac(secret, forServer.publicKey);
@@ -84,7 +102,7 @@ describe("device pairing", () => {
   });
 
   test("a MAC computed over a different public key doesn't verify — catches a substituted key", async () => {
-    const secret = await keys.generatePairingSecret();
+    const { secret } = await keys.generatePairingCode();
     const legit = await keys.createUserKeyMaterial("legit device");
     const attacker = await keys.createUserKeyMaterial("attacker device");
 
@@ -93,18 +111,11 @@ describe("device pairing", () => {
   });
 
   test("a MAC computed with the wrong secret doesn't verify — catches a relay that never saw the real code", async () => {
-    const realSecret = await keys.generatePairingSecret();
-    const wrongSecret = await keys.generatePairingSecret();
+    const { secret: realSecret } = await keys.generatePairingCode();
+    const { secret: wrongSecret } = await keys.generatePairingCode();
     const { forServer } = await keys.createUserKeyMaterial("new device");
 
     const mac = keys.computePairingMac(wrongSecret, forServer.publicKey);
     expect(keys.verifyPairingMac(realSecret, forServer.publicKey, mac)).toBe(false);
-  });
-
-  test("display string round-trips back to the same secret bytes", async () => {
-    const secret = await keys.generatePairingSecret();
-    const displayed = keys.pairingSecretToDisplayString(secret);
-    const parsed = keys.pairingSecretFromDisplayString(displayed);
-    expect(toBase64(parsed)).toBe(toBase64(secret));
   });
 });

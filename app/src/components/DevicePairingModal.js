@@ -80,7 +80,7 @@ export default function DevicePairingModal({ householdId, onClose }) {
                   {code}
                 </Text>
               </View>
-              <Text style={s.hint}>Long-press the code above to copy it. Expires in a few minutes.</Text>
+              <Text style={s.hint}>Read it aloud or hand over the phone — expires in a few minutes.</Text>
               <ActivityIndicator style={s.spinner} />
               <Text style={s.waitingText}>Waiting for the new device…</Text>
             </>
@@ -122,8 +122,8 @@ const styles = StyleSheet.create({
   card: { backgroundColor: "#fff", borderRadius: 14, padding: 22 },
   title: { fontSize: 18, fontWeight: "700", marginBottom: 10, textAlign: "center" },
   body: { fontSize: 14, color: "#444", lineHeight: 20, marginBottom: 16, textAlign: "center" },
-  codeBox: { backgroundColor: "#f2f2f2", borderRadius: 8, padding: 14, marginBottom: 6 },
-  code: { fontFamily: "monospace", fontSize: 13, textAlign: "center" },
+  codeBox: { backgroundColor: "#f2f2f2", borderRadius: 8, padding: 18, marginBottom: 6 },
+  code: { fontFamily: "monospace", fontSize: 28, fontWeight: "700", letterSpacing: 4, textAlign: "center" },
   hint: { fontSize: 12, color: "#999", textAlign: "center", marginBottom: 16 },
   spinner: { marginVertical: 12 },
   waitingText: { fontSize: 13, color: "#888", textAlign: "center" },

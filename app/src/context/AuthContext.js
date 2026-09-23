@@ -375,10 +375,18 @@ export function AuthProvider({ children }) {
    * it back to verify the joining device's submission locally.
    */
   async function startDevicePairing(householdId) {
-    const secret = await keys.generatePairingSecret();
-    const created = await api.createPairingSession(householdId);
-    const code = `${created.pairingId}.${keys.pairingSecretToDisplayString(secret)}`;
-    return { pairingId: created.pairingId, secret, code, expiresAt: created.expiresAt };
+    // Retries on the rare lookup-code collision (see keys.js generatePairingCode
+    // and the backend's P2002 handling) — negligible odds at this app's scale,
+    // but cheap to handle rather than surface a confusing error for it.
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      const { lookup, secret, code } = await keys.generatePairingCode();
+      try {
+        const created = await api.createPairingSession(householdId, lookup);
+        return { pairingId: created.pairingId, secret, code, expiresAt: created.expiresAt };
+      } catch (err) {
+        if (attempt === 3 || !/already in use/i.test(err.message)) throw err;
+      }
+    }
   }
 
   /**
@@ -417,15 +425,13 @@ export function AuthProvider({ children }) {
    * with the returned deviceId until it shows real access.
    */
   async function joinViaPairingCode(pairingCodeStr) {
-    const [pairingId, secretStr] = pairingCodeStr.trim().split(".");
-    if (!pairingId || !secretStr) throw new Error("That doesn't look like a valid pairing code.");
-    const secret = keys.pairingSecretFromDisplayString(secretStr);
+    const { lookup, secret } = keys.parsePairingCode(pairingCodeStr);
 
     const deviceSecret = await getOrCreateVaultSecret();
     const { forServer } = await keys.createUserKeyMaterial(deviceSecret);
     const mac = keys.computePairingMac(secret, forServer.publicKey);
 
-    const result = await api.submitPairingDevice(pairingId, { ...forServer, deviceName: DEFAULT_DEVICE_NAME }, mac);
+    const result = await api.submitPairingDevice(lookup, { ...forServer, deviceName: DEFAULT_DEVICE_NAME }, mac);
     await persistDeviceId(result.deviceId);
     setDeviceIdState(result.deviceId);
     return result.deviceId;

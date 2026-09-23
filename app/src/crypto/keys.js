@@ -124,25 +124,59 @@ export function recoveryKeyFromDisplayString(str) {
 }
 
 /**
- * Device pairing (§10d): the out-of-band secret an already-unlocked device
- * generates and shows/types to a new device, so the new device can join
- * without a pre-saved recovery code. Never sent to the server in any form
- * — only the MAC it produces (below) travels through the pairing-session
- * relay, and only after the granting device has verified that MAC locally
- * does it ever wrap the real DEK. crypto_auth's key size doubles as a
- * reasonable secret size — no separate derivation step needed.
+ * Device pairing (§10d), short human-typed code (decision, 2026-09-23 —
+ * the original design concatenated a full session id with a 32-byte
+ * secret, ~80 characters, unusable by hand). Eight characters total,
+ * Crockford base32 (0-9, A-Z minus I/L/O/U — nothing that looks alike
+ * when read aloud or typed), split into two 4-character halves that do
+ * different jobs:
+ *   - LOOKUP: sent to the server so it can find the pairing session —
+ *     public, meaningless on its own.
+ *   - SECRET: generated here, on the already-unlocked device, and never
+ *     sent to the server in any form — only the MAC it produces (below)
+ *     travels through the pairing-session relay. This is what preserves
+ *     the original hijack protection: if the server ever learned SECRET
+ *     directly, it could derive the same MAC key and forge a submission
+ *     for its own public key, so SECRET only ever leaves this device via
+ *     the human relaying the full code out of band.
+ * Trade-off worth naming: 4 characters of this alphabet is ~20 bits of
+ * secret entropy, far less than the original 256-bit key. Acceptable
+ * here because the protocol only accepts one submission per session
+ * (see submitPairingDevice's "already been used" check) — an attacker
+ * gets a single blind guess per 10-minute window, not an offline search.
  */
-export async function generatePairingSecret() {
+const PAIRING_ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ"; // Crockford base32
+const PAIRING_LOOKUP_LENGTH = 4;
+const PAIRING_SECRET_LENGTH = 4;
+
+async function randomPairingChars(length) {
   await readySodium();
-  return sodium.randombytes_buf(sodium.crypto_auth_KEYBYTES);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += PAIRING_ALPHABET[sodium.randombytes_uniform(PAIRING_ALPHABET.length)];
+  }
+  return out;
 }
 
-export function pairingSecretToDisplayString(secret) {
-  return toBase64(secret);
+/** Run on the already-unlocked (granting) device to start a pairing session. */
+export async function generatePairingCode() {
+  const lookup = await randomPairingChars(PAIRING_LOOKUP_LENGTH);
+  const secret = await randomPairingChars(PAIRING_SECRET_LENGTH);
+  return { lookup, secret, code: lookup + secret };
 }
 
-export function pairingSecretFromDisplayString(str) {
-  return fromBase64(str);
+/** Run on the joining device once the user types/pastes the code shown on the other device. */
+export function parsePairingCode(str) {
+  const code = String(str).toUpperCase().replace(/[^0-9A-Z]/g, "");
+  if (code.length !== PAIRING_LOOKUP_LENGTH + PAIRING_SECRET_LENGTH) {
+    throw new Error("That doesn't look like a valid pairing code.");
+  }
+  return { lookup: code.slice(0, PAIRING_LOOKUP_LENGTH), secret: code.slice(PAIRING_LOOKUP_LENGTH) };
+}
+
+/** Stretches the short human-typed secret into a fixed 32-byte key (crypto_auth's required key size) via BLAKE2b. */
+function derivePairingMacKey(secret) {
+  return sodium.crypto_generichash(32, fromUtf8(secret));
 }
 
 /**
@@ -151,11 +185,11 @@ export function pairingSecretFromDisplayString(str) {
  * submitted this public key actually read the pairing code, not just
  * relayed by (or substituted by) the server in between.
  */
-export function computePairingMac(pairingSecret, publicKeyB64) {
-  return toBase64(sodium.crypto_auth(fromUtf8(publicKeyB64), pairingSecret));
+export function computePairingMac(secret, publicKeyB64) {
+  return toBase64(sodium.crypto_auth(fromUtf8(publicKeyB64), derivePairingMacKey(secret)));
 }
 
 /** Run by the granting device before it ever wraps the DEK for the submitted public key. */
-export function verifyPairingMac(pairingSecret, publicKeyB64, macB64) {
-  return sodium.crypto_auth_verify(fromBase64(macB64), fromUtf8(publicKeyB64), pairingSecret);
+export function verifyPairingMac(secret, publicKeyB64, macB64) {
+  return sodium.crypto_auth_verify(fromBase64(macB64), fromUtf8(publicKeyB64), derivePairingMacKey(secret));
 }

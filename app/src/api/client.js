@@ -202,7 +202,7 @@ export const api = {
     call("auth.setRecoveryKey", { householdId, recoveryWrappedDek, recoveryDekNonce }),
   addDeviceViaRecoveryCode: (householdId, keyMaterial) =>
     call("auth.addDeviceViaRecoveryCode", { householdId, ...keyMaterial }),
-  createPairingSession: (householdId) => call("auth.createPairingSession", { householdId }),
+  createPairingSession: (householdId, lookupCode) => call("auth.createPairingSession", { householdId, lookupCode }),
   submitPairingDevice: (pairingId, keyMaterial, mac) =>
     call("auth.submitPairingDevice", { pairingId, ...keyMaterial, mac }),
   getPairingStatus: (pairingId) => call("auth.getPairingStatus", { pairingId }),

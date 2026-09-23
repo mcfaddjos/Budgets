@@ -129,15 +129,16 @@ export default function UnlockScreen() {
           </Text>
 
           <TextInput
-            style={s.input}
+            style={[s.input, s.pairingInput]}
             value={pairingCode}
             onChangeText={(text) => {
-              setPairingCode(text);
+              setPairingCode(text.toUpperCase());
               setPairingError(null);
             }}
-            placeholder="Pairing code"
-            autoCapitalize="none"
+            placeholder="ABCD1234"
+            autoCapitalize="characters"
             autoCorrect={false}
+            maxLength={8}
             editable={!busy}
           />
 
@@ -226,6 +227,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 16,
+  },
+  pairingInput: {
+    fontFamily: "monospace",
+    fontSize: 24,
+    fontWeight: "700",
+    letterSpacing: 4,
+    textAlign: "center",
   },
   error: { color: "#c0392b", textAlign: "center", fontSize: 14, lineHeight: 20, marginTop: 14 },
   button: {

@@ -401,16 +401,27 @@ async function addDeviceViaRecoveryCode(user, payload) {
  * running a separate cleanup job — cheap, and this table is never large.
  */
 async function createPairingSession(user, payload) {
-  const { householdId } = payload || {};
+  const { householdId, lookupCode } = payload || {};
+  if (!lookupCode) throw new Error("lookupCode is required");
   if (!(await hasHouseholdAccess(user.id, householdId))) {
     throw new Error("Not a member with access to that household");
   }
 
   await db.devicePairingSession.deleteMany({ where: { expiresAt: { lt: new Date() } } });
 
-  const session = await db.devicePairingSession.create({
-    data: { userId: user.id, householdId, expiresAt: new Date(Date.now() + PAIRING_SESSION_TTL_MS) },
-  });
+  // lookupCode is client-generated (app/src/crypto/keys.js generatePairingCode,
+  // §10d) — a short 4-character code, not a UUID, so it doubles as the row's
+  // id directly rather than needing a separate column. Collision odds at
+  // this app's scale are negligible, but the client retries on P2002 anyway.
+  let session;
+  try {
+    session = await db.devicePairingSession.create({
+      data: { id: lookupCode, userId: user.id, householdId, expiresAt: new Date(Date.now() + PAIRING_SESSION_TTL_MS) },
+    });
+  } catch (err) {
+    if (err.code === "P2002") throw new Error("That code is already in use — try again.");
+    throw err;
+  }
   return { pairingId: session.id, expiresAt: session.expiresAt };
 }
 

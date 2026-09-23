@@ -313,9 +313,20 @@ test("device pairing: an already-unlocked device grants a new device access via 
   createdHouseholdIds.push(registered.householdId);
   const user = await db.user.findUnique({ where: { id: registered.user.id } });
 
-  // Granting device starts a pairing session.
-  const session = await authHandlers.createPairingSession(user, { householdId: registered.householdId });
-  expect(session.pairingId).toBeDefined();
+  await expect(authHandlers.createPairingSession(user, { householdId: registered.householdId })).rejects.toThrow(
+    /lookupCode is required/i
+  );
+
+  // Granting device starts a pairing session — a short, client-generated
+  // lookup code (§10d) rather than a server-assigned UUID, so a second
+  // session with the same code is rejected rather than silently colliding.
+  const lookupCode = `T${crypto.randomUUID().slice(0, 3).toUpperCase()}`;
+  const session = await authHandlers.createPairingSession(user, { householdId: registered.householdId, lookupCode });
+  expect(session.pairingId).toBe(lookupCode);
+
+  await expect(
+    authHandlers.createPairingSession(user, { householdId: registered.householdId, lookupCode })
+  ).rejects.toThrow(/already in use/i);
 
   // Joining device submits its own key material + a MAC (the MAC's actual
   // verification happens client-side on the granting device — the server
