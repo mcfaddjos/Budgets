@@ -51,7 +51,7 @@ function MainApp() {
     <SafeAreaView style={s.container}>
       <View style={s.topBar}>
         <Text style={s.greeting}>Hi, {user.name || user.email || "there"}</Text>
-        <TouchableOpacity onPress={() => setSettingsVisible(true)}>
+        <TouchableOpacity style={s.gearButton} onPress={() => setSettingsVisible(true)} hitSlop={8}>
           <Text style={s.gear}>⚙</Text>
         </TouchableOpacity>
       </View>
@@ -144,7 +144,15 @@ const styles = StyleSheet.create({
     borderBottomColor: "#eee",
   },
   greeting: { fontSize: 15, fontWeight: "600" },
-  gear: { fontSize: 20, color: "#1a1a1a" },
+  gearButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: "#f0f0f0",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  gear: { fontSize: 17, color: "#1a1a1a" },
 });
 
 const darkStyles = {
@@ -153,5 +161,6 @@ const darkStyles = {
   loadingText: { color: dark.textMuted },
   topBar: { backgroundColor: dark.card, borderBottomColor: dark.border },
   greeting: { color: dark.text },
+  gearButton: { backgroundColor: dark.bgAlt },
   gear: { color: dark.text },
 };

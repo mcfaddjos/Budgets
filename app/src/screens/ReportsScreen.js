@@ -19,7 +19,12 @@ export default function ReportsScreen() {
 
   return (
     <View style={s.container}>
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={s.pickerRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={s.pickerScroll}
+        contentContainerStyle={s.pickerRow}
+      >
         {REPORTS.map((r) => (
           <Chip key={r.id} label={r.title} active={selectedId === r.id} onPress={() => setSelectedId(r.id)} />
         ))}
@@ -34,7 +39,16 @@ export default function ReportsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f7f8" },
-  pickerRow: { flexDirection: "row", gap: 6, paddingHorizontal: 16, paddingTop: 14, paddingBottom: 6 },
+  pickerScroll: { flexGrow: 0, flexShrink: 0 },
+  pickerRow: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 8,
+    paddingLeft: 16,
+    paddingRight: 28,
+    paddingTop: 14,
+    paddingBottom: 10,
+  },
   body: { padding: 16, paddingTop: 12 },
 });
 

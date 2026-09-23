@@ -19,6 +19,6 @@ export default function Chip({ label, active, onPress }) {
 }
 
 const styles = StyleSheet.create({
-  chip: { borderWidth: 1, borderRadius: 13, paddingHorizontal: 10, paddingVertical: 5 },
-  text: { fontSize: 12, fontWeight: "600" },
+  chip: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 8, paddingVertical: 4 },
+  text: { fontSize: 11, fontWeight: "600" },
 });
