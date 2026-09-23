@@ -2,7 +2,7 @@
 
 **Status:** Active development (PoC live, in daily use)
 **Author:** Joe McFadden
-**Last updated:** 2026-09-22 (multi-device key material: per-device keys replace the one-slot-per-user design, recovery code and device pairing both built — see §10d)
+**Last updated:** 2026-09-23 (receipt itemization designed: Azure Document Intelligence for receipts + vision-LLM fallback for gas pumps/payment screenshots, embedded line items on the transaction, client-embedded API keys — see §8.6)
 
 ## 1. Summary
 
@@ -253,8 +253,8 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 - Auto-categorize on import using: (a) household-defined merchant/description rules, (b) a default keyword-based ruleset shipped with the app, (c) fallback to "Uncategorized."
 - Allow bulk re-categorization (select multiple transactions → assign category).
 - Learn from manual corrections by prompting "Always categorize [merchant] as [category]?" and saving as a rule.
-- **Split transactions (e.g. one grocery run: food vs. drinks) — raised 2026-09-16, under discussion, not designed yet.** Today a `Transaction` has exactly one `categoryId`; the ask is to let a single purchase span more than one category (part groceries, part alcohol, on one receipt) instead of forcing the whole amount into one bucket. Open questions:
-  - **Data model**: does a `Transaction` gain a set of line items (each its own category + amount, summing to the transaction total) for split rows specifically, or is a "split" actually two-or-more ordinary transaction rows tied together (parent/child, or a shared `splitGroupId`)? These differ in how dedup, CSV re-import, and the `reviewed` flag apply — a line-item model keeps one dedup key per real-world purchase; a multi-row model needs a new way to dedup the group as a whole.
+- **Split transactions (e.g. one grocery run: food vs. drinks) — raised 2026-09-16, under discussion, not designed yet.** Today a `Transaction` has exactly one `categoryId`; the ask is to let a single purchase span more than one category (part groceries, part alcohol, on one receipt) instead of forcing the whole amount into one bucket. **The data-model question below is now partially answered by §8.6's itemized-receipt decision (2026-09-23)**: items live embedded on the transaction (`items: [{ name, amount, categoryId }]`), not as linked rows — the `categoryId` field already exists on each item for exactly this feature, just unused by the budget-math/UI until per-item categorization is actually designed. Still open:
+  - **Data model — resolved by §8.6 (2026-09-23)**: embedded line items on the `Transaction` (not linked rows) — one dedup key per real-world purchase, `reviewed`/CSV re-import logic untouched since it's still exactly one row. What's still open is purely the *budget-math and UI* side: once an item's `categoryId` is actually set, does that item's amount count toward its own category's actual spend (§8.3) instead of the transaction's single top-level category, and how does the Budgets screen show a transaction that now spans categories?
   - **Where a split gets created**: a CSV/statement line is one row with one amount, so a split can't be inferred from the source data — is it only ever a manual edit after import, or does the Add Transaction modal (manual entry) support entering a split directly too?
   - **Interaction with category rules**: today's rule is one merchant → one category (§8.2 above). A merchant that sometimes splits (a grocery run with wine) and sometimes doesn't doesn't fit that cleanly — does a split simply opt out of rule-based auto-categorization and always require manual entry, or does a merchant need its own "usually splits this way" template?
   - **Budget rollup**: each split portion should count toward its own category's actual spend in §8.3 (the natural reading) — needs to be explicit, since every existing actual-vs-budget query currently assumes one `categoryId` per transaction row.
@@ -290,46 +290,94 @@ spend vs. budget.** It intentionally cuts scope versus the full PRD below:
 - Export transactions and summaries to CSV and PDF.
 - Per-person breakdown, given §5a: how much of this month's spend did each household member enter, per category and in total — see §8.8's report catalog (not yet built as a report).
 
-### 8.6 Receipt & Photo Capture (roadmap, not started)
+### 8.6 Receipt & Photo Capture (decision, 2026-09-23 — supersedes the "no itemization" scope below)
 
 The goal: point the phone camera at a receipt, a gas pump's total, or a
 screenshot of a Venmo request, and get a **pre-filled** Add Transaction
-form (amount, likely category, a description guess) that still requires a
-human tap to confirm — never a silent auto-commit, since OCR/vision
-extraction is genuinely wrong often enough that blind trust would corrupt
-the budget quietly.
+form that still requires a human tap to confirm — never a silent
+auto-commit, since OCR/vision extraction is genuinely wrong often enough
+that blind trust would corrupt the budget quietly. **Reversed from the
+original scope**: a receipt now extracts full itemization (each line
+item + tax + tip, not just the total), so tapping a transaction later can
+show what actually made up the charge, not just the amount.
 
-- **Inputs to support**: a physical receipt photo, a gas station pump
-  display photo (just needs the total, not itemization), and a screenshot
-  of a payment app request/confirmation (Venmo, Zelle, etc. — these are
-  already-digital text, likely the easiest of the three to extract
-  reliably).
-- **Extraction approach**: send the captured image to a vision-capable
-  model to extract amount/vendor/date/(a category guess) as structured
-  data, then populate the existing Add Transaction form fields for the
-  user to review and confirm/edit before saving — reusing the modal that
-  already exists rather than building a separate confirmation UI.
-- **Category guess feeds the same categorizer** that already exists for
-  statement imports (merchant rules + default keywords), rather than being
-  a separate guessing mechanism.
-- **Decision (2026-09-15): the receipt/gas-pump/screenshot image is
-  consumed, not stored.** Only the extracted fields (amount, vendor,
-  date, category guess) are saved to the transaction — the image itself
-  is discarded once extraction completes, never persisted (not on the
-  server, not in the household's encrypted data). This reverses the
-  earlier plan to keep the image as a durable record (see §12's Monarch
-  Money comparison, now not something we're matching) — smaller data
-  footprint, nothing extra to encrypt/store/manage under §10a, at the
-  cost of losing the "pull up the original receipt later" use case
-  (tax records, disputing a charge).
-- Explicitly **not** attempting full itemized receipt parsing (line items,
-  tax breakdown) for v1 — just enough to log one transaction at the
-  receipt's total.
-- **Extraction location, resolved by §10a**: since the server must never
-  see plaintext, and the image is transient (never persisted), it goes
-  straight from device to wherever extraction happens — fully on-device,
-  or a direct client-to-vision-API call — never proxied through our own
-  backend.
+**Extraction tooling (decision, 2026-09-23)** — two different tools for
+two different jobs, chosen after evaluating purpose-built receipt-parsing
+APIs against general vision-LLMs on cost, accuracy, and whether they can
+be called directly from a mobile client (required — see the key-handling
+decision below):
+
+- **Receipts → Azure AI Document Intelligence, `prebuilt-receipt` model.**
+  Purpose-trained on retail/restaurant receipts specifically, so it
+  returns items, prices, tax, tip, total, merchant, and date as
+  structured JSON with no custom parsing logic on our side. Its free tier
+  (500 pages/month, no time limit) comfortably covers this household's
+  real volume — genuinely free, not a trial. **Known limitation**:
+  trained on receipts specifically, so accuracy on a gas pump display or
+  a payment-app screenshot is unproven and likely weak — those aren't
+  "receipts" in its training sense.
+- **Gas pumps and payment-app screenshots → a vision-capable LLM**
+  (Claude or Gemini) with our own extraction prompt, since Azure's
+  receipt model doesn't fit these. Costs fractions of a cent per image at
+  this household's volume (a few images a week) — not a hard free tier
+  like Azure, but functionally free in practice. These two input types
+  don't get itemization (a gas pump total or a Venmo request has no line
+  items to extract) — just amount, vendor/description guess, and a
+  category guess, same as the original (pre-itemization) design.
+- Both paths populate the **same existing Add Transaction modal** fields
+  for the user to review/edit before saving, rather than a separate
+  confirmation UI — unchanged from the original design.
+- **Category guess** (for the whole transaction, and — once per-item
+  categorization ships, see below — potentially per item too) reuses the
+  same categorizer already built for statement imports (merchant rules +
+  default keywords), not a separate guessing mechanism.
+
+**API key handling (decision, 2026-09-23)**: both Azure's and the vision-LLM's
+API keys are **embedded directly in the app** and called straight from
+the phone — standard practice for a consumer app calling a third-party
+API from mobile, with the provider's own rate-limiting/key-restriction
+options as the safety net against abuse if a key is ever extracted from
+the compiled app. This keeps §10a's "never proxied through our own
+backend" guarantee for the *household's financial data* fully intact —
+our backend never sees the image or any extracted content, regardless of
+key handling. Considered and rejected: a thin backend relay that keeps
+the key server-side — that's more conventional secret hygiene, but it
+would mean the receipt image passes through our backend at least
+transiently (even if unpersisted), a real if minor softening of the
+zero-knowledge-server property that isn't worth trading away just to
+avoid an embedded key.
+
+**Data model (decision, 2026-09-23, see §9)**: items are **embedded on
+the transaction itself** — `Transaction.encryptedData` gains an `items:
+[{ name, amount, categoryId }]` array plus `tax`/`tip` fields, rather
+than each item becoming its own linked Transaction row. Smaller schema
+change, and matches what was actually asked for (see a receipt's
+breakdown under one transaction) rather than the heavier "split across
+multiple budget categories" version of this idea.
+
+- **Per-item categories are schema-ready but not built in v1**: each
+  item's `categoryId` field exists now and is nullable/unused by the UI
+  at first — a transaction still has exactly one category for budget
+  math, same as today. This is deliberately the same underlying shape as
+  the already-open **split transactions** question in §8.2 (e.g.
+  "alcohol" vs. "groceries" within one Target run) — building the field
+  in now avoids a second migration once that's ready to design for real,
+  at essentially no cost today.
+- The raw photo is still **consumed, not stored** (decision, 2026-09-15,
+  unchanged) — only the extracted structured data (items, tax, tip,
+  vendor, date, category) is saved, encrypted like everything else under
+  §10a; the image itself is discarded once extraction completes, never
+  persisted anywhere. What's new isn't keeping the photo — it's that the
+  *extracted* data is now much richer than a bare amount.
+- **Extraction location, resolved by §10a, reaffirmed 2026-09-23**: the
+  image goes straight from the device to Azure/the vision-LLM — never
+  proxied through our own backend, consistent with the API-key decision
+  above.
+- **v1 scope explicitly includes all three input types** (receipt, gas
+  pump, payment-app screenshot) together, rather than shipping receipts
+  first and adding the other two later — the PRD's original framing
+  already named all three, and the two extraction paths (Azure /
+  vision-LLM) are being built together anyway.
 
 ### 8.7 Settings & appearance (built, 2026-09-16)
 
@@ -434,7 +482,7 @@ this list.
 - **Invite**: id, householdId, code, createdByUserId, createdAt, expiresAt (nullable), usedByUserId (nullable) — household-scoped, replacing today's single global `INVITE_CODE`.
 - **Account**: id, householdId, name, type (credit/checking/savings), institution, **ownerUserIds** (2026-09-16 — a plaintext list of member user ids; one for a personal account like a single credit card, more than one for something shared like a household savings account; validated server-side to actually be members of the account's household).
 - **Statement Import**: id, account_id, file type, imported_at, source filename, date range covered.
-- **Transaction**: id, householdId, account_id, statement_import_id, date, description (raw + normalized), amount, category_id, reviewed (bool), notes, **createdByUserId**.
+- **Transaction**: id, householdId, account_id, statement_import_id, date, description (raw + normalized), amount, category_id, reviewed (bool), notes, **createdByUserId**, **items** (2026-09-23 — nullable array of `{ name, amount, categoryId }`, populated by receipt itemization per §8.6; `categoryId` exists now but unused by budget math/UI until per-item categorization is designed, §8.2), **tax**, **tip** (2026-09-23 — nullable, from itemized receipts).
 - **Category**: id, householdId, name, parent_category_id (optional, for subcategories).
 - **Category Rule**: id, householdId, match_pattern (merchant/keyword), category_id.
 - **Budget**: id, householdId, category_id, month, amount.
@@ -711,7 +759,12 @@ purposes later). YNAB, Copilot, PocketGuard, and Rocket Money all skip
 image persistence entirely, same as we've decided to (§8.6, 2026-09-15) —
 we're matching the majority here (extract-then-discard), not Monarch's
 approach, a deliberate tradeoff against §10a's smaller-data-footprint
-preference under end-to-end encryption.
+preference under end-to-end encryption. **Still true post-itemization
+(2026-09-23)**: the raw photo is still discarded, never Monarch's
+"keep the image" model — but what we now keep instead (full itemization,
+tax, tip, not just amount/merchant/date) is itself closer to what a
+dedicated expense-report tool captures than any of the personal-budgeting
+apps reviewed here attempt.
 
 **Quick-add / low-friction entry** — no reviewed app does Venmo-screenshot
 or SMS-parsing quick-add well; that's a genuine differentiation opportunity
@@ -739,7 +792,7 @@ own polish pass, not a feature gap.
 - **M3 — Reconciliation & Reporting:** flagging dashboard, monthly report archive, trend reports, exports, per-person breakdown.
 - **M4 — Backend migration (§14a):** off Apps Script/Sheets onto a real HTTP host + database, with the security hardening in §10 as part of the same move. **Done, 2026-09-16** — live on Render + Neon.
 - **M5 — Shared household model (§5a):** household-scoped data, per-transaction attribution, household-aware invite/registration. **Done, 2026-09-16**, shipped as part of the E2EE rewrite.
-- **M6 — Receipt & photo capture (§8.6).**
+- **M6 — Receipt & photo capture (§8.6): designed, 2026-09-23, not yet built.** Azure Document Intelligence (`prebuilt-receipt`) for itemized receipts, a vision-LLM fallback (Claude/Gemini) for gas pumps and payment-app screenshots, both called directly from the client with embedded API keys. Real implementation work still ahead: camera capture UI, the Azure/vision-LLM client integration itself, and extending the Add Transaction modal to show/edit an itemized breakdown.
 - **M7 — iOS standalone build (§14), in progress (started 2026-09-17):** first pass targets a free Apple ID with local Xcode signing (fastest path to a working build on the Mac; 7-day re-signing, Mac-required for renewal) rather than a paid Apple Developer account. Push notifications for large transactions remain a stretch goal alongside this, not a prerequisite.
 - **M7a — Recovery-code redemption and device pairing (§10d): done, 2026-09-22.** Landed sooner than the M7-then-M7a order originally planned — needing to actually log into the existing account from the iPhone during M7 made the gap immediately blocking rather than deferrable. Shipped as a full per-device key-material redesign (not just a recovery screen), since the original one-keypair-per-user schema couldn't have supported two working devices at once.
 
