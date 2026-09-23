@@ -36,6 +36,12 @@ model Household {
   name      String?
   createdAt DateTime @default(now())
 
+  // Not financial content (a preference toggle, not amounts/descriptions),
+  // so plaintext is fine — same reasoning as Account.ownerUserIds (§8.6,
+  // 2026-09-23). Default off: receipt photos are discarded after
+  // extraction unless a household explicitly opts into keeping them.
+  keepReceiptImages Boolean @default(false)
+
   members       HouseholdMember[]
   invites       Invite[]
   accounts      Account[]
@@ -276,7 +282,12 @@ model Transaction {
   date String
 
   // description, normalizedDescription, and amount are encrypted (§10a):
-  // { description, normalizedDescription, amount }
+  // { description, normalizedDescription, amount }. §8.6 (2026-09-23)
+  // adds optional itemized-receipt fields to this same JSON payload — no
+  // schema change needed for those, since the server never parses this
+  // blob's contents either way: { items: [{ name, amount, categoryId }],
+  // tax, tip }. categoryId per item is schema-ready but unused by budget
+  // math/UI until per-item categorization is designed (§8.2).
   encryptedData String // base64
   nonce         String // base64
 
@@ -294,6 +305,8 @@ model Transaction {
   account   Account   @relation(fields: [accountId], references: [id], onDelete: Cascade)
   category  Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   createdBy User?     @relation("TransactionCreator", fields: [createdByUserId], references: [id])
+
+  receiptImage TransactionReceiptImage?
 
   @@unique([accountId, dedupKey])
   @@index([householdId, date])
@@ -316,4 +329,23 @@ model Budget {
   category  Category  @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 
   @@unique([householdId, categoryId, month])
+}
+
+// Optional, opt-in (Household.keepReceiptImages) — §8.6, 2026-09-23. The
+// captured photo itself, encrypted the same way as every other field
+// (§10a): it's just a larger payload through the same encryptRecord/
+// decryptRecord pipeline, not a new crypto primitive. 1:1 with its
+// transaction (cascades on delete) and kept as its own table rather than
+// folded into Transaction.encryptedData specifically so listing
+// transactions never has to load image bytes — only fetched on demand
+// when a receipt view is actually opened.
+model TransactionReceiptImage {
+  transactionId String @id
+
+  encryptedData String // base64 — { image: base64EncodedImage, mimeType }
+  nonce         String // base64
+
+  createdAt DateTime @default(now())
+
+  transaction Transaction @relation(fields: [transactionId], references: [id], onDelete: Cascade)
 }

@@ -5,6 +5,8 @@ const categoriesHandlers = require("./handlers/categories");
 const categoryRulesHandlers = require("./handlers/categoryRules");
 const transactionsHandlers = require("./handlers/transactions");
 const budgetsHandlers = require("./handlers/budgets");
+const householdHandlers = require("./handlers/household");
+const receiptsHandlers = require("./handlers/receipts");
 
 // Same action-envelope protocol the app already speaks to the appscript
 // backend ({action, token, payload} -> {ok, data|error}) — deliberately
@@ -49,6 +51,12 @@ const ROUTES = {
 
   "budgets.get": (user, payload) => budgetsHandlers.get(user, payload),
   "budgets.set": (user, payload) => budgetsHandlers.set(user, payload),
+
+  "household.getSettings": (user) => householdHandlers.getSettings(user),
+  "household.setKeepReceiptImages": (user, payload) => householdHandlers.setKeepReceiptImages(user, payload),
+
+  "receipts.upload": (user, payload) => receiptsHandlers.upload(user, payload),
+  "receipts.get": (user, payload) => receiptsHandlers.get(user, payload),
 };
 
 async function dispatch(action, token, payload) {
