@@ -14,6 +14,8 @@ export const queryKeys = {
   transactions: (householdId, month) => ["transactions", householdId, month],
   budgets: (householdId, month) => ["budgets", householdId, month],
   transactionFormOptions: (householdId) => ["transactionFormOptions", householdId],
+  householdSettings: (householdId) => ["householdSettings", householdId],
+  receiptImage: (householdId, transactionId) => ["receiptImage", householdId, transactionId],
 };
 
 function useHouseholdId() {
@@ -173,6 +175,48 @@ export function useSetBudget() {
   return useMutation({
     mutationFn: ({ categoryId, month, amount }) => repo.setBudget(householdId, categoryId, month, amount),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["budgets", householdId] }),
+  });
+}
+
+// ----- Household settings -----
+
+export function useHouseholdSettings() {
+  const householdId = useHouseholdId();
+  return useQuery({
+    queryKey: queryKeys.householdSettings(householdId),
+    queryFn: () => repo.getHouseholdSettings(),
+    enabled: !!householdId,
+  });
+}
+
+export function useSetKeepReceiptImages() {
+  const householdId = useHouseholdId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (keep) => repo.setKeepReceiptImages(keep),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.householdSettings(householdId) }),
+  });
+}
+
+// ----- Receipt images -----
+
+export function useReceiptImage(transactionId) {
+  const householdId = useHouseholdId();
+  return useQuery({
+    queryKey: queryKeys.receiptImage(householdId, transactionId),
+    queryFn: () => repo.getReceiptImage(householdId, transactionId),
+    enabled: !!householdId && !!transactionId,
+  });
+}
+
+export function useSaveReceiptImage() {
+  const householdId = useHouseholdId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ transactionId, image, mimeType }) =>
+      repo.saveReceiptImage(householdId, transactionId, { image, mimeType }),
+    onSuccess: (_data, { transactionId }) =>
+      queryClient.invalidateQueries({ queryKey: queryKeys.receiptImage(householdId, transactionId) }),
   });
 }
 

@@ -99,18 +99,29 @@ export async function listTransactions(householdId, params) {
  * on the same day are both real, see backend/src/handlers/transactions.js)
  * and that stays true now; the content-hash form is for statement import,
  * not built yet.
+ *
+ * items/tax/tip (PRD §8.6) are optional — undefined for a plain manual
+ * entry, populated when this transaction came from a scanned receipt.
+ * Each item is `{ description, amount, categoryId }`; categoryId is
+ * schema-ready but unused in v1 (no UI sets it yet). They live inside the
+ * same encryptedData blob as everything else — records.encryptRecord is
+ * generic, so this needed no changes there.
  */
 export async function createManualTransaction(
   householdId,
-  { accountId, categoryId, amount, description, fallbackDescription, date }
+  { accountId, categoryId, amount, description, fallbackDescription, date, items, tax, tip }
 ) {
   const dek = session.getHouseholdDek(householdId);
   const finalDescription = (description || "").trim() || fallbackDescription || "";
-  const { encryptedData, nonce } = await records.encryptRecord(dek, {
+  const fields = {
     description: finalDescription,
     normalizedDescription: normalizeDescription(finalDescription),
     amount,
-  });
+  };
+  if (items !== undefined) fields.items = items;
+  if (tax !== undefined) fields.tax = tax;
+  if (tip !== undefined) fields.tip = tip;
+  const { encryptedData, nonce } = await records.encryptRecord(dek, fields);
   return api.createTransaction({
     accountId,
     categoryId,
@@ -181,4 +192,39 @@ export async function setBudget(householdId, categoryId, month, amount) {
   const dek = session.getHouseholdDek(householdId);
   const { encryptedData, nonce } = await records.encryptRecord(dek, { amount });
   return api.setBudget(categoryId, month, encryptedData, nonce);
+}
+
+// ----- Household settings -----
+
+/** keepReceiptImages is plaintext (a preference, not financial content) — see backend/prisma/schema.prisma's Household model. */
+export function getHouseholdSettings() {
+  return api.getHouseholdSettings();
+}
+
+export function setKeepReceiptImages(keep) {
+  return api.setKeepReceiptImages(keep);
+}
+
+// ----- Receipt images -----
+
+/**
+ * Same encrypt-before-send shape as every other record (§10a) — the image
+ * is just a base64 string living inside the JSON blob alongside mimeType,
+ * so records.encryptRecord/decryptRecord needed no changes to support it.
+ * Callers should check getHouseholdSettings().keepReceiptImages before
+ * calling this — the server has no opinion on whether to keep the image,
+ * it just stores whatever ciphertext it's handed.
+ */
+export async function saveReceiptImage(householdId, transactionId, { image, mimeType }) {
+  const dek = session.getHouseholdDek(householdId);
+  const { encryptedData, nonce } = await records.encryptRecord(dek, { image, mimeType });
+  return api.uploadReceiptImage(transactionId, encryptedData, nonce);
+}
+
+/** Returns null if this transaction never had an image saved (or the setting was off when it was created). */
+export async function getReceiptImage(householdId, transactionId) {
+  const dek = session.getHouseholdDek(householdId);
+  const row = await api.getReceiptImage(transactionId);
+  if (!row) return null;
+  return records.decryptRecord(dek, row.encryptedData, row.nonce);
 }

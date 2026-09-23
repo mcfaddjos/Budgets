@@ -254,6 +254,15 @@ export const api = {
   setBudget: (categoryId, month, encryptedData, nonce) =>
     call("budgets.set", { categoryId, month, encryptedData, nonce }),
 
+  getHouseholdSettings: () => call("household.getSettings"),
+  setKeepReceiptImages: (keepReceiptImages) => call("household.setKeepReceiptImages", { keepReceiptImages }),
+
+  // upload is an upsert server-side (backend/src/handlers/receipts.js) —
+  // safe to retry, so it's deliberately left out of NON_IDEMPOTENT_ACTIONS.
+  uploadReceiptImage: (transactionId, encryptedData, nonce) =>
+    call("receipts.upload", { transactionId, encryptedData, nonce }),
+  getReceiptImage: (transactionId) => call("receipts.get", { transactionId }),
+
   // CSV statement import and the old QuickAdd-sheet mechanism aren't
   // ported — both need a client-side rewrite (parsing, categorization,
   // and dedup all need plaintext that only exists on-device now, §10a)
