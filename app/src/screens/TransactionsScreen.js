@@ -10,10 +10,44 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
-import { useCategories, useDeleteTransaction, useRecategorizeTransaction, useTransactions } from "../data/queries";
+import {
+  useCategories,
+  useDeleteTransaction,
+  useHouseholdSettings,
+  useRecategorizeTransaction,
+  useSaveReceiptImage,
+  useTransactions,
+} from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
+import TransactionDetailModal from "../components/TransactionDetailModal";
+import { captureReceiptPhoto } from "../receipts/capture";
+import { extractFromImage } from "../receipts/extractReceipt";
 import { useThemedStyles } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
+
+const SCAN_KINDS = [
+  { kind: "receipt", label: "Receipt" },
+  { kind: "gas_pump", label: "Gas pump" },
+  { kind: "payment_screenshot", label: "Payment screenshot" },
+];
+
+function initialValuesFromExtraction(kind, extracted) {
+  if (kind === "receipt") {
+    return {
+      description: extracted.vendor || "",
+      amount: extracted.total != null ? extracted.total : "",
+      date: extracted.date || undefined,
+      items: extracted.items,
+      tax: extracted.tax,
+      tip: extracted.tip,
+    };
+  }
+  return {
+    description: extracted.description || extracted.vendor || "",
+    amount: extracted.amount != null ? extracted.amount : "",
+    date: extracted.date || undefined,
+  };
+}
 
 function currentMonth() {
   return new Date().toISOString().slice(0, 7);
@@ -30,9 +64,15 @@ export default function TransactionsScreen() {
   const { data: categories = [] } = useCategories();
   const recategorize = useRecategorizeTransaction();
   const deleteTransaction = useDeleteTransaction();
+  const { data: householdSettings } = useHouseholdSettings();
+  const saveReceiptImage = useSaveReceiptImage();
 
   const [pickerTx, setPickerTx] = useState(null);
   const [addTxVisible, setAddTxVisible] = useState(false);
+  const [scanInitialValues, setScanInitialValues] = useState(null);
+  const [pendingReceiptPhoto, setPendingReceiptPhoto] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const [detailTx, setDetailTx] = useState(null);
   const s = useThemedStyles(styles, darkStyles);
 
   function categoryName(categoryId) {
@@ -47,6 +87,53 @@ export default function TransactionsScreen() {
       Alert.alert("Couldn't update category", err.message);
     } finally {
       setPickerTx(null);
+    }
+  }
+
+  function handleScanPress() {
+    Alert.alert(
+      "Scan",
+      "What are you scanning?",
+      SCAN_KINDS.map(({ kind, label }) => ({ text: label, onPress: () => runScan(kind) })).concat({
+        text: "Cancel",
+        style: "cancel",
+      })
+    );
+  }
+
+  async function runScan(kind) {
+    setScanning(true);
+    try {
+      const photo = await captureReceiptPhoto();
+      if (!photo) return; // cancelled, or camera permission denied
+      const extracted = await extractFromImage(photo.base64, photo.mimeType, kind);
+      setPendingReceiptPhoto(householdSettings?.keepReceiptImages ? photo : null);
+      setScanInitialValues(initialValuesFromExtraction(kind, extracted));
+      setAddTxVisible(true);
+    } catch (err) {
+      Alert.alert("Couldn't scan that", err.message);
+    } finally {
+      setScanning(false);
+    }
+  }
+
+  function handleAddTxClose() {
+    setAddTxVisible(false);
+    setScanInitialValues(null);
+    setPendingReceiptPhoto(null);
+  }
+
+  async function handleAddTxSaved(created) {
+    setAddTxVisible(false);
+    const photo = pendingReceiptPhoto;
+    setScanInitialValues(null);
+    setPendingReceiptPhoto(null);
+    if (photo && created?.id) {
+      try {
+        await saveReceiptImage.mutateAsync({ transactionId: created.id, image: photo.base64, mimeType: photo.mimeType });
+      } catch (err) {
+        Alert.alert("Transaction saved, but the receipt image failed to upload", err.message);
+      }
     }
   }
 
@@ -71,9 +158,14 @@ export default function TransactionsScreen() {
     <View style={s.container}>
       <View style={s.headerRow}>
         <Text style={s.header}>{month}</Text>
-        <TouchableOpacity style={s.addButton} onPress={() => setAddTxVisible(true)}>
-          <Text style={s.addButtonText}>+ Add Transaction</Text>
-        </TouchableOpacity>
+        <View style={s.headerButtons}>
+          <TouchableOpacity style={s.scanButton} onPress={handleScanPress} disabled={scanning}>
+            <Text style={s.scanButtonText}>{scanning ? "Scanning…" : "Scan"}</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={s.addButton} onPress={() => setAddTxVisible(true)}>
+            <Text style={s.addButtonText}>+ Add Transaction</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {isPending ? (
@@ -89,10 +181,12 @@ export default function TransactionsScreen() {
           contentContainerStyle={s.list}
           ListEmptyComponent={<Text style={s.empty}>No transactions this month yet. Add one to get started.</Text>}
           ListHeaderComponent={
-            transactions.length > 0 ? <Text style={s.hint}>Long-press a transaction to delete it.</Text> : null
+            transactions.length > 0 ? (
+              <Text style={s.hint}>Tap a transaction for details, long-press to delete it.</Text>
+            ) : null
           }
           renderItem={({ item }) => (
-            <TouchableOpacity style={s.row} onLongPress={() => handleDelete(item)}>
+            <TouchableOpacity style={s.row} onPress={() => setDetailTx(item)} onLongPress={() => handleDelete(item)}>
               <View style={s.rowMain}>
                 <Text style={s.description} numberOfLines={1}>
                   {item.description}
@@ -125,9 +219,18 @@ export default function TransactionsScreen() {
 
       <AddTransactionModal
         visible={addTxVisible}
-        onClose={() => setAddTxVisible(false)}
-        onSaved={() => setAddTxVisible(false)}
+        initialValues={scanInitialValues}
+        onClose={handleAddTxClose}
+        onSaved={handleAddTxSaved}
       />
+
+      {detailTx ? (
+        <TransactionDetailModal
+          transaction={detailTx}
+          categoryName={categoryName(detailTx.categoryId)}
+          onClose={() => setDetailTx(null)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -143,6 +246,15 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   header: { fontSize: 14, fontWeight: "600", color: "#888" },
+  headerButtons: { flexDirection: "row", gap: 8 },
+  scanButton: {
+    borderWidth: 1,
+    borderColor: "#1a6ed8",
+    borderRadius: 8,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+  },
+  scanButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
   addButton: {
     backgroundColor: "#1a6ed8",
     borderRadius: 8,
@@ -181,6 +293,8 @@ const styles = StyleSheet.create({
 const darkStyles = {
   container: { backgroundColor: dark.bg },
   header: { color: dark.textMuted },
+  scanButton: { borderColor: dark.accent },
+  scanButtonText: { color: dark.accent },
   addButton: { backgroundColor: dark.accent },
   loadingText: { color: dark.textMuted },
   empty: { color: dark.textMuted },

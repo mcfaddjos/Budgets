@@ -76,6 +76,15 @@ export function useUpdateCategory() {
   });
 }
 
+export function useCategoryRules() {
+  const householdId = useHouseholdId();
+  return useQuery({
+    queryKey: queryKeys.categoryRules(householdId),
+    queryFn: () => repo.listCategoryRules(householdId),
+    enabled: !!householdId,
+  });
+}
+
 export function useTransactions(month) {
   const householdId = useHouseholdId();
   return useQuery({

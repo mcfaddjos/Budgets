@@ -1,17 +1,29 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useCreateManualTransaction, useTransactionFormOptions } from "../data/queries";
+import { useCategoryRules, useCreateManualTransaction, useTransactionFormOptions } from "../data/queries";
+import { categorize, normalizeDescription } from "../categorize/defaults";
 import FormModal from "./FormModal";
 import { useThemedStyles } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
+
+function parseAmount(value) {
+  const n = parseFloat(value);
+  return Number.isNaN(n) ? 0 : n;
+}
 
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
  * buttons, no account implied) — the account picker only shows when there's
  * more than one account to choose from.
+ *
+ * initialValues (optional, from a receipt/gas-pump/screenshot scan — PRD
+ * §8.6): { description, amount, date, items, tax, tip }. `items` being
+ * present at all (even []) is what turns on the itemized-breakdown editor
+ * — a plain manual entry never has it, so the section stays hidden there.
  */
-export default function AddTransactionModal({ visible, initialAccountId, onClose, onSaved }) {
+export default function AddTransactionModal({ visible, initialAccountId, initialValues, onClose, onSaved }) {
   const { data, isPending, isError, error, refetch } = useTransactionFormOptions();
+  const { data: categoryRules = [] } = useCategoryRules();
   const createTransaction = useCreateManualTransaction();
   const accounts = data?.accounts ?? [];
   const categories = data?.categories ?? [];
@@ -20,20 +32,44 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
   const [categoryId, setCategoryId] = useState(null);
+  const [items, setItems] = useState(undefined);
+  const [tax, setTax] = useState("");
+  const [tip, setTip] = useState("");
   const s = useThemedStyles(styles, darkStyles);
 
   useEffect(() => {
     if (visible) {
-      setAmount("");
-      setDescription("");
+      setAmount(initialValues?.amount != null ? String(initialValues.amount) : "");
+      setDescription(initialValues?.description || "");
       setCategoryId(null);
       setAccountId(initialAccountId || null);
+      setItems(initialValues?.items ? initialValues.items.map((i) => ({ name: i.name, amount: String(i.amount) })) : undefined);
+      setTax(initialValues?.tax != null ? String(initialValues.tax) : "");
+      setTip(initialValues?.tip != null ? String(initialValues.tip) : "");
     }
-  }, [visible, initialAccountId]);
+  }, [visible, initialAccountId, initialValues]);
 
   useEffect(() => {
     if (visible && !accountId && accounts.length > 0) setAccountId(accounts[0].id);
   }, [visible, accountId, accounts]);
+
+  /** Category guess for a scanned transaction (PRD §8.6) — reuses the same categorizer statement import uses, only runs once the categories/rules are actually loaded and only pre-fills, never overrides a choice the user already made. */
+  useEffect(() => {
+    if (!visible || !initialValues?.description || categoryId || categories.length === 0) return;
+    const categoryIdByName = Object.fromEntries(categories.map((c) => [c.name, c.id]));
+    const guess = categorize(normalizeDescription(initialValues.description), categoryRules, categoryIdByName);
+    if (guess) setCategoryId(guess);
+  }, [visible, initialValues, categories, categoryRules, categoryId]);
+
+  function addItem() {
+    setItems((prev) => [...(prev || []), { name: "", amount: "" }]);
+  }
+  function updateItem(index, field, value) {
+    setItems((prev) => prev.map((item, i) => (i === index ? { ...item, [field]: value } : item)));
+  }
+  function removeItem(index) {
+    setItems((prev) => prev.filter((_, i) => i !== index));
+  }
 
   async function handleSave() {
     const amt = parseFloat(amount);
@@ -51,15 +87,19 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
     }
     const category = categories.find((c) => c.id === categoryId);
     try {
-      await createTransaction.mutateAsync({
+      const created = await createTransaction.mutateAsync({
         accountId,
         categoryId,
         amount: amt,
         description: description.trim(),
         fallbackDescription: category?.name,
+        date: initialValues?.date,
+        items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: null })),
+        tax: items !== undefined ? parseAmount(tax) : undefined,
+        tip: items !== undefined ? parseAmount(tip) : undefined,
       });
       Alert.alert("Transaction added", `${description.trim() || category?.name || "(no description)"} — $${amt.toFixed(2)}`);
-      onSaved();
+      onSaved(created);
     } catch (err) {
       Alert.alert("Couldn't add transaction", err.message);
     }
@@ -130,6 +170,46 @@ export default function AddTransactionModal({ visible, initialAccountId, onClose
               ))}
             </View>
           )}
+
+          {items !== undefined ? (
+            <>
+              <Text style={s.label}>Items</Text>
+              {items.map((item, index) => (
+                <View key={index} style={s.itemRow}>
+                  <TextInput
+                    style={[s.input, s.itemNameInput]}
+                    value={item.name}
+                    onChangeText={(v) => updateItem(index, "name", v)}
+                    placeholder="Item"
+                  />
+                  <TextInput
+                    style={[s.input, s.itemAmountInput]}
+                    value={item.amount}
+                    onChangeText={(v) => updateItem(index, "amount", v)}
+                    keyboardType="decimal-pad"
+                    placeholder="0.00"
+                  />
+                  <TouchableOpacity onPress={() => removeItem(index)} style={s.itemRemove}>
+                    <Text style={s.itemRemoveText}>×</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+              <TouchableOpacity onPress={addItem} style={s.addItemButton}>
+                <Text style={s.addItemButtonText}>+ Add item</Text>
+              </TouchableOpacity>
+
+              <View style={s.taxTipRow}>
+                <View style={s.taxTipField}>
+                  <Text style={s.label}>Tax</Text>
+                  <TextInput style={s.input} value={tax} onChangeText={setTax} keyboardType="decimal-pad" placeholder="0.00" />
+                </View>
+                <View style={s.taxTipField}>
+                  <Text style={s.label}>Tip</Text>
+                  <TextInput style={s.input} value={tip} onChangeText={setTip} keyboardType="decimal-pad" placeholder="0.00" />
+                </View>
+              </View>
+            </>
+          ) : null}
         </>
       )}
 
@@ -183,6 +263,15 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#fff", fontWeight: "600" },
   secondaryButton: { paddingVertical: 10, paddingHorizontal: 18 },
   secondaryButtonText: { color: "#666" },
+  itemRow: { flexDirection: "row", alignItems: "center", gap: 8 },
+  itemNameInput: { flex: 1 },
+  itemAmountInput: { width: 80 },
+  itemRemove: { paddingHorizontal: 4, paddingBottom: 10 },
+  itemRemoveText: { fontSize: 20, color: "#c0392b" },
+  addItemButton: { alignSelf: "flex-start", marginBottom: 16 },
+  addItemButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
+  taxTipRow: { flexDirection: "row", gap: 10 },
+  taxTipField: { flex: 1 },
 });
 
 const darkStyles = {
@@ -198,4 +287,6 @@ const darkStyles = {
   retryButtonText: { color: dark.accent },
   primaryButton: { backgroundColor: dark.accent },
   secondaryButtonText: { color: dark.textMuted },
+  itemRemoveText: { color: dark.danger },
+  addItemButtonText: { color: dark.accent },
 };

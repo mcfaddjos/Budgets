@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ActivityIndicator, Alert, FlatList, ScrollView, StyleSheet, Text, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, FlatList, ScrollView, StyleSheet, Switch, Text, TouchableOpacity, View } from "react-native";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
+import { useHouseholdSettings, useSetKeepReceiptImages } from "../data/queries";
 import { useThemedStyles, useTheme } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
 import DevicePairingModal from "../components/DevicePairingModal";
@@ -29,6 +30,8 @@ export default function SettingsScreen({ onClose }) {
   const { scheme, setScheme } = useTheme();
   const s = useThemedStyles(styles, darkStyles);
   const queryClient = useQueryClient();
+  const { data: householdSettings } = useHouseholdSettings();
+  const setKeepReceiptImages = useSetKeepReceiptImages();
 
   const [pending, setPending] = useState([]);
   const [loadingPending, setLoadingPending] = useState(true);
@@ -92,6 +95,14 @@ export default function SettingsScreen({ onClose }) {
       Alert.alert("Couldn't seed demo data", err.message);
     } finally {
       setSeeding(false);
+    }
+  }
+
+  async function handleToggleKeepReceiptImages(value) {
+    try {
+      await setKeepReceiptImages.mutateAsync(value);
+    } catch (err) {
+      Alert.alert("Couldn't update setting", err.message);
     }
   }
 
@@ -206,6 +217,24 @@ export default function SettingsScreen({ onClose }) {
         ) : null}
 
         <View style={s.section}>
+          <Text style={s.sectionTitle}>Receipts</Text>
+          <View style={s.toggleRow}>
+            <View style={s.toggleLabelBox}>
+              <Text style={s.rowPrimary}>Keep receipt images</Text>
+              <Text style={s.hint}>
+                Saves the photo alongside each scanned transaction for tax records, household-wide. Off by default —
+                without it, the photo is only used to fill in the transaction and then discarded.
+              </Text>
+            </View>
+            <Switch
+              value={!!householdSettings?.keepReceiptImages}
+              onValueChange={handleToggleKeepReceiptImages}
+              disabled={!householdSettings || setKeepReceiptImages.isPending}
+            />
+          </View>
+        </View>
+
+        <View style={s.section}>
           <Text style={s.sectionTitle}>Appearance</Text>
           <View style={s.modeRow}>
             <TouchableOpacity
@@ -283,6 +312,8 @@ const styles = StyleSheet.create({
   },
   grantButton: { backgroundColor: "#1a1a1a", borderRadius: 6, paddingVertical: 6, paddingHorizontal: 12 },
   grantButtonText: { color: "#fff", fontSize: 12, fontWeight: "600" },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: 12 },
+  toggleLabelBox: { flex: 1 },
   modeRow: { flexDirection: "row", gap: 8 },
   modeButton: {
     flex: 1,
