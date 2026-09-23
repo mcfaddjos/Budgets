@@ -36,7 +36,15 @@
           "iosUrlScheme": "com.googleusercontent.apps.73352269798-t46f5bjtq43m7kto7b7cnfqbg8p0uijp"
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow Budgets to access your photos to attach a receipt image to a transaction.",
+          "cameraPermission": "Allow Budgets to use your camera to scan a receipt, gas pump, or payment screenshot.",
+          "microphonePermission": false
+        }
+      ]
     ]
   }
 }
