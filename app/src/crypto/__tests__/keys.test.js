@@ -73,3 +73,38 @@ describe("recovery key", () => {
     expect(toBase64(parsed)).toBe(toBase64(recoveryKey));
   });
 });
+
+describe("device pairing", () => {
+  test("the joining device's MAC verifies on the granting device using the same out-of-band secret", async () => {
+    const secret = await keys.generatePairingSecret();
+    const { forServer } = await keys.createUserKeyMaterial("new device's own vault secret");
+
+    const mac = keys.computePairingMac(secret, forServer.publicKey);
+    expect(keys.verifyPairingMac(secret, forServer.publicKey, mac)).toBe(true);
+  });
+
+  test("a MAC computed over a different public key doesn't verify — catches a substituted key", async () => {
+    const secret = await keys.generatePairingSecret();
+    const legit = await keys.createUserKeyMaterial("legit device");
+    const attacker = await keys.createUserKeyMaterial("attacker device");
+
+    const mac = keys.computePairingMac(secret, legit.forServer.publicKey);
+    expect(keys.verifyPairingMac(secret, attacker.forServer.publicKey, mac)).toBe(false);
+  });
+
+  test("a MAC computed with the wrong secret doesn't verify — catches a relay that never saw the real code", async () => {
+    const realSecret = await keys.generatePairingSecret();
+    const wrongSecret = await keys.generatePairingSecret();
+    const { forServer } = await keys.createUserKeyMaterial("new device");
+
+    const mac = keys.computePairingMac(wrongSecret, forServer.publicKey);
+    expect(keys.verifyPairingMac(realSecret, forServer.publicKey, mac)).toBe(false);
+  });
+
+  test("display string round-trips back to the same secret bytes", async () => {
+    const secret = await keys.generatePairingSecret();
+    const displayed = keys.pairingSecretToDisplayString(secret);
+    const parsed = keys.pairingSecretFromDisplayString(displayed);
+    expect(toBase64(parsed)).toBe(toBase64(secret));
+  });
+});

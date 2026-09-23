@@ -11,14 +11,17 @@
 // manufacturers that it risked making the unlock flaky; worth adding back
 // as a follow-up once there's a device matrix to test it against.
 //
-// Known gap (§10c, logged in PRD): a device that never had this secret
-// generated (a genuinely new device, or reinstalling after clearing app
-// data) has no way to recover an existing account's private key — that
-// requires a recovery-code redemption flow that doesn't exist yet.
+// §10d closes the gap noted above: a device with no working key material
+// yet (never registered here, or storage was cleared) now has two ways
+// back in — recovery-code redemption, or pairing with an already-unlocked
+// device — both additive (a new UserDevice row), never touching any other
+// device's key material. See AuthContext.js's recoverAccess/pairing
+// functions and PRD §10d for the full design.
 import * as SecureStore from "expo-secure-store";
 import sodium, { readySodium, toBase64 } from "./sodium";
 
 const STORAGE_KEY = "budgets_vault_secret_v1";
+const DEVICE_ID_KEY = "budgets_device_id_v1";
 
 /**
  * Returns this device's vault secret, generating and storing one the
@@ -34,4 +37,20 @@ export async function getOrCreateVaultSecret() {
   const secret = toBase64(sodium.randombytes_buf(32));
   await SecureStore.setItemAsync(STORAGE_KEY, secret, { keychainAccessible: SecureStore.WHEN_UNLOCKED });
   return secret;
+}
+
+/**
+ * This device's UserDevice.id (§10d) — assigned by the server the first
+ * time this device ever registers key material (new household, invite
+ * redemption, recovery-code redemption, or device pairing) and persisted
+ * here so every later auth.login/auth.me call can identify which device
+ * is asking. Not a secret itself (an opaque id, not key material) — just
+ * needs to survive restarts the same way the vault secret does.
+ */
+export async function getDeviceId() {
+  return SecureStore.getItemAsync(DEVICE_ID_KEY);
+}
+
+export async function setDeviceId(deviceId) {
+  await SecureStore.setItemAsync(DEVICE_ID_KEY, deviceId, { keychainAccessible: SecureStore.WHEN_UNLOCKED });
 }

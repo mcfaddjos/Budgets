@@ -192,15 +192,21 @@ export const api = {
   // app/src/context/AuthContext.js for how they're assembled.
   registerNewHousehold: (keyMaterial) => call("auth.registerNewHousehold", keyMaterial),
   joinHouseholdViaInvite: (payload) => call("auth.joinHouseholdViaInvite", payload),
-  login: (idToken) => call("auth.login", { idToken }),
-  me: (opts) => call("auth.me", undefined, opts),
+  login: (idToken, deviceId) => call("auth.login", { idToken, deviceId }),
+  me: (deviceId, opts) => call("auth.me", { deviceId }, opts),
   createInvite: (householdId, expiresInDays) => call("auth.createInvite", { householdId, expiresInDays }),
   listPendingKeyGrants: (householdId) => call("auth.listPendingKeyGrants", { householdId }),
   listMembers: (householdId) => call("auth.listMembers", { householdId }),
-  grantAccess: (householdId, memberUserId, wrappedDek) =>
-    call("auth.grantAccess", { householdId, memberUserId, wrappedDek }),
+  grantAccess: (householdId, deviceId, wrappedDek) => call("auth.grantAccess", { householdId, deviceId, wrappedDek }),
   setRecoveryKey: (householdId, recoveryWrappedDek, recoveryDekNonce) =>
     call("auth.setRecoveryKey", { householdId, recoveryWrappedDek, recoveryDekNonce }),
+  addDeviceViaRecoveryCode: (householdId, keyMaterial) =>
+    call("auth.addDeviceViaRecoveryCode", { householdId, ...keyMaterial }),
+  createPairingSession: (householdId) => call("auth.createPairingSession", { householdId }),
+  submitPairingDevice: (pairingId, keyMaterial, mac) =>
+    call("auth.submitPairingDevice", { pairingId, ...keyMaterial, mac }),
+  getPairingStatus: (pairingId) => call("auth.getPairingStatus", { pairingId }),
+  isPairingComplete: (pairingId) => call("auth.isPairingComplete", { pairingId }),
 
   getAccounts: () => call("accounts.list"),
   createAccount: async (encryptedData, nonce, ownerUserIds) => {

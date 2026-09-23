@@ -1,54 +1,45 @@
-// These are integration tests against the real Neon dev database (the
-// same one `backend/.env` points at) — there's no separate test DB, so
-// every fixture uses a random suffix and cleans itself up, rather than
-// mocking Prisma. Deliberately not a unit-test-with-mocks setup: the
-// handlers are thin enough that mocking Prisma would mostly just test the
-// mocks, not whether they actually work against real schema constraints
-// (which is exactly what caught real issues during manual smoke testing
-// earlier — e.g. the dedupKey unique constraint).
+// These are integration tests against a real Postgres database (see
+// backend/README.md / PRD §14a — Neon's dev branch in normal use, a local
+// throwaway instance also works fine) — there's no mocked Prisma, every
+// fixture uses a random suffix and cleans itself up. Deliberately not a
+// unit-test-with-mocks setup: the handlers are thin enough that mocking
+// Prisma would mostly just test the mocks, not whether they actually work
+// against real schema constraints (which is exactly what caught real
+// issues during manual smoke testing earlier — e.g. the dedupKey unique
+// constraint).
 const crypto = require("node:crypto");
 const db = require("../../db");
 
+/** A household with one OWNER, one device, and that device already granted access (§10d). */
 async function createTestHousehold(overrides = {}) {
   const suffix = crypto.randomUUID();
   const household = await db.household.create({ data: {} });
   const user = await db.user.create({
+    data: { googleId: `test-${suffix}`, email: `test-${suffix}@example.com`, name: "Test User", ...overrides.user },
+  });
+  const device = await db.userDevice.create({
     data: {
-      googleId: `test-${suffix}`,
-      email: `test-${suffix}@example.com`,
-      name: "Test User",
+      userId: user.id,
       publicKey: "test-pk",
       encryptedPrivateKey: "test-epk",
       privateKeyNonce: "test-nonce",
       vaultKdfSalt: "test-salt",
-      ...overrides.user,
+      ...overrides.device,
     },
   });
   await db.householdMember.create({
-    data: {
-      householdId: household.id,
-      userId: user.id,
-      role: "OWNER",
-      wrappedDek: "test-wrapped-dek",
-      ...overrides.membership,
-    },
+    data: { householdId: household.id, userId: user.id, role: "OWNER", ...overrides.membership },
   });
-  return { household, user };
+  await db.deviceHouseholdKey.create({
+    data: { deviceId: device.id, householdId: household.id, wrappedDek: "test-wrapped-dek", ...overrides.deviceHouseholdKey },
+  });
+  return { household, user, device };
 }
 
 async function createTestUser(overrides = {}) {
   const suffix = crypto.randomUUID();
   return db.user.create({
-    data: {
-      googleId: `test-${suffix}`,
-      email: `test-${suffix}@example.com`,
-      name: "Test User",
-      publicKey: "test-pk",
-      encryptedPrivateKey: "test-epk",
-      privateKeyNonce: "test-nonce",
-      vaultKdfSalt: "test-salt",
-      ...overrides,
-    },
+    data: { googleId: `test-${suffix}`, email: `test-${suffix}@example.com`, name: "Test User", ...overrides },
   });
 }
 
@@ -65,7 +56,8 @@ async function cleanupUser(user) {
  * (schema's onDelete: Cascade) but never the User rows themselves — a
  * user isn't owned by any single household (§5b, membership is a
  * relationship). Fixtures need both cleaned up, or every test run leaves
- * an orphaned User behind.
+ * an orphaned User (and their UserDevice rows, cascaded from the User
+ * delete) behind.
  */
 async function cleanupFixture({ household, user }) {
   await cleanupHousehold(household);

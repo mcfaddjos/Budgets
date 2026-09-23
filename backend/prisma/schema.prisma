@@ -43,24 +43,18 @@ model Household {
   categoryRules CategoryRule[]
   transactions  Transaction[]
   budgets       Budget[]
+  deviceKeys    DeviceHouseholdKey[]
 }
 
-// Identity + key-material for a user, split deliberately into two
-// unrelated secrets (decision, 2026-09-15, see PRD §10a):
-//
-//   1. Google Sign-In authenticates *who you are* to the server (verified
-//      via Google's own ID-token signature — no local password verifier
-//      needed at all for login).
-//   2. A separate **vault passphrase**, entered only in the app and never
-//      sent to the server in any form, derives (Argon2id, via
-//      vaultKdfSalt) the key that unlocks encryptedPrivateKey below.
-//
-// These must stay independent: if Google (or a compromised Google
-// session) were enough on its own to unlock the vault, the "developer
-// cannot access user data" property would actually mean "neither can the
-// developer NOR anyone who controls the Google account" — a weaker
-// guarantee than intended. The vault passphrase is what keeps decryption
-// possible only for someone who knows a secret the server never sees.
+// Identity only — no key material lives here (see UserDevice below).
+// Google Sign-In authenticates *who you are* to the server (verified via
+// Google's own ID-token signature — no local password verifier needed at
+// all for login). Key material is per-device, not per-user, precisely so
+// "log in anywhere" is possible: a single publicKey/encryptedPrivateKey
+// slot on User would mean the most-recently-added device silently
+// invalidates every other one (decision, 2026-09-22, see PRD §10c/§10d —
+// this is the schema change that makes multi-device support correct
+// rather than a footgun).
 model User {
   id        String   @id @default(uuid())
   googleId  String   @unique // Google's stable "sub" claim
@@ -68,20 +62,7 @@ model User {
   name      String?
   createdAt DateTime @default(now())
 
-  // Public-key identity (libsodium crypto_box keypair), used so other
-  // household members can wrap the household DEK to this user without
-  // needing them online at invite time (crypto_box_seal, §10a).
-  publicKey String // base64, safe to be plaintext — this is the public half
-
-  // The matching private key, encrypted client-side with a key derived
-  // from the user's vault passphrase (never their Google credential).
-  // The server only ever stores/relays this ciphertext.
-  encryptedPrivateKey String // base64 ciphertext
-  privateKeyNonce     String // base64, secretbox nonce for the above
-  vaultKdfSalt        String // base64, Argon2id salt for re-deriving the
-  //                            vault-passphrase-wrapping key on a new
-  //                            device/login
-
+  devices             UserDevice[]
   memberships         HouseholdMember[]
   sessions            Session[]
   invitesCreated      Invite[]      @relation("InviteCreator")
@@ -89,42 +70,104 @@ model User {
   transactionsCreated Transaction[] @relation("TransactionCreator")
 }
 
+// One row per device this user has ever registered a keypair on
+// (decision, 2026-09-22 — see PRD §10d). A separate **vault secret**,
+// generated on-device and never sent to the server in any form (§10c),
+// derives (Argon2id, via vaultKdfSalt) the key that unlocks
+// encryptedPrivateKey — same split-secret rationale as before (§10a):
+// if Google alone could unlock a device's vault, "the developer can't
+// read your data" would quietly become "neither can the developer, nor
+// anyone who controls the Google account."
+model UserDevice {
+  id     String  @id @default(uuid())
+  userId String
+  name   String? // optional label ("Android", "iPhone") — cosmetic only
+
+  // Public-key identity (libsodium crypto_box keypair) for this device.
+  // Other devices (this user's own, or another household member's) wrap
+  // a household DEK to this without needing the device online at grant
+  // time (crypto_box_seal, §10a).
+  publicKey String // base64, safe to be plaintext — this is the public half
+
+  encryptedPrivateKey String // base64 ciphertext
+  privateKeyNonce     String // base64, secretbox nonce for the above
+  vaultKdfSalt        String // base64, Argon2id salt for re-deriving the
+  //                            vault-secret-wrapping key on this device
+
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user          User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  householdKeys DeviceHouseholdKey[]
+}
+
+// This device's wrapped copy of one household's DEK — replaces the old
+// single wrappedDek on HouseholdMember, since a household's DEK now needs
+// wrapping once per *device*, not once per *user* (a user with two
+// devices holds two separate wraps of the same DEK, one per public key).
+// Row absence (not a nullable column) is what "pending a grant" means
+// now: a brand-new device has no row here until an already-unlocked
+// device (this user's own, via device pairing, or another household
+// member, via the existing invite/grant flow) wraps the DEK for it.
+model DeviceHouseholdKey {
+  deviceId    String
+  householdId String
+
+  wrappedDek String // base64
+
+  device    UserDevice @relation(fields: [deviceId], references: [id], onDelete: Cascade)
+  household Household  @relation(fields: [householdId], references: [id], onDelete: Cascade)
+
+  @@id([deviceId, householdId])
+}
+
+// Ephemeral, short-lived relay for pairing a new device to an existing
+// account without any pre-saved secret (decision, 2026-09-22, see PRD
+// §10d) — the primary way to add a device going forward, with the
+// recovery code (HouseholdMember.recoveryWrappedDek) as the backstop for
+// "every device is gone." The actual pairing secret is generated
+// client-side on the already-unlocked device and shown/typed out of
+// band (never sent here) — this table only ever relays ciphertext plus a
+// MAC the already-unlocked device verifies locally before it ever wraps
+// the real DEK, so a compromised server can relay but can't substitute
+// its own public key to hijack the pairing. Deleted once consumed or
+// expired; nothing here is sensitive on its own (the MAC is only useful
+// to someone who already knows the out-of-band secret).
+model DevicePairingSession {
+  id          String @id @default(uuid())
+  userId      String
+  householdId String
+
+  // Submitted by the joining device once the user enters/scans the code.
+  newPublicKey           String?
+  newEncryptedPrivateKey String?
+  newPrivateKeyNonce     String?
+  newVaultKdfSalt        String?
+  newDeviceMac           String? // base64 HMAC(pairingSecret, newPublicKey), verified by the granting device
+
+  // Submitted by the granting device once it verifies newDeviceMac locally.
+  wrappedDekForNewDevice String?
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+}
+
 // Membership is a relationship, not a column on User — see PRD §5b. A user
 // belonging to more than one household later needs no schema change here,
 // just a "which household am I acting in" concept client-side.
 //
-// Also where each member's copy of the household DEK lives (§10a): one
-// copy sealed to their public key (day-to-day unlock via password), and a
-// second copy wrapped with their own recovery key (self-service recovery
-// if the vault passphrase is lost — see PRD §10a's account-recovery
-// decision). Losing both is unrecoverable by design; the household's data
-// isn't lost since other members keep their own working copies.
-//
-// wrappedDek/recoveryWrappedDek/recoveryDekNonce are nullable because they
-// can't all be populated atomically: sealing the DEK to a new member's
-// public key requires that key to already exist, so joining via invite
-// (§5b) necessarily creates this row with wrappedDek still null — an
-// existing member has to complete the grant once the new member exists,
-// then the new member sets up their own recovery code once they can
-// actually decrypt anything. A household's creator is the one exception
-// (they hold the DEK from the moment they generate it, so their own row
-// is fully populated immediately).
+// Also where a user's recovery code lives (§10a): the household DEK
+// encrypted with a high-entropy recovery key generated client-side and
+// shown to the user once to store themselves — the server never sees the
+// recovery key. Deliberately per-user-per-household, not per-device: the
+// same recovery code bootstraps any new device for this user, and doesn't
+// require another already-unlocked device to be reachable.
 model HouseholdMember {
   householdId String
   userId      String
   role        HouseholdRole @default(MEMBER)
   joinedAt    DateTime      @default(now())
 
-  // Household DEK sealed to this member's publicKey (crypto_box_seal —
-  // no separate nonce needed, the ephemeral key rides in the ciphertext).
-  // Null until an existing member completes the access grant.
-  wrappedDek String? // base64
-
-  // Household DEK encrypted (crypto_secretbox_easy) with a high-entropy
-  // recovery key generated client-side and shown to the user once to
-  // store themselves — the server never sees the recovery key. Null until
-  // the member sets this up themselves (requires wrappedDek to be set
-  // first, so they have the DEK to wrap).
   recoveryWrappedDek String? // base64
   recoveryDekNonce   String? // base64
 

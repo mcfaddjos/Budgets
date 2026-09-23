@@ -4,6 +4,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "../context/AuthContext";
 import { useThemedStyles, useTheme } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
+import DevicePairingModal from "../components/DevicePairingModal";
 import { seedSeptemberDemoData } from "../data/devSeed";
 import appConfig from "../../app.json";
 
@@ -33,7 +34,8 @@ export default function SettingsScreen({ onClose }) {
   const [loadingPending, setLoadingPending] = useState(true);
   const [invite, setInvite] = useState(null);
   const [creatingInvite, setCreatingInvite] = useState(false);
-  const [grantingUserId, setGrantingUserId] = useState(null);
+  const [grantingDeviceId, setGrantingDeviceId] = useState(null);
+  const [pairingModalOpen, setPairingModalOpen] = useState(null);
   const [seeding, setSeeding] = useState(false);
 
   const role = memberships.find((m) => m.householdId === activeHouseholdId)?.role;
@@ -64,15 +66,15 @@ export default function SettingsScreen({ onClose }) {
     }
   }
 
-  async function handleGrant(member) {
-    setGrantingUserId(member.userId);
+  async function handleGrant(device) {
+    setGrantingDeviceId(device.deviceId);
     try {
-      await grantAccessTo(activeHouseholdId, member.userId, member.publicKey);
-      setPending((prev) => prev.filter((m) => m.userId !== member.userId));
+      await grantAccessTo(activeHouseholdId, device.deviceId, device.publicKey);
+      setPending((prev) => prev.filter((d) => d.deviceId !== device.deviceId));
     } catch (err) {
       Alert.alert("Couldn't grant access", err.message);
     } finally {
-      setGrantingUserId(null);
+      setGrantingDeviceId(null);
     }
   }
 
@@ -137,27 +139,30 @@ export default function SettingsScreen({ onClose }) {
         <View style={s.section}>
           <Text style={s.sectionTitle}>Waiting for access</Text>
           <Text style={s.hint}>
-            Someone who joined with an invite can't decrypt anything until you grant them access from here — see PRD
-            §10a.
+            A device — someone else's after redeeming an invite, or your own after device pairing (Settings → Add a
+            device) — can't decrypt anything until you grant it access from here. See PRD §10a/§10d.
           </Text>
           {loadingPending ? (
             <ActivityIndicator style={{ marginTop: 12 }} />
           ) : (
             <FlatList
               data={pending}
-              keyExtractor={(item) => item.userId}
+              keyExtractor={(item) => item.deviceId}
               scrollEnabled={false}
               ListEmptyComponent={<Text style={s.rowSecondary}>Nobody waiting right now.</Text>}
               renderItem={({ item }) => (
                 <View style={s.pendingRow}>
-                  <Text style={s.rowPrimary}>{item.name || item.email}</Text>
+                  <Text style={s.rowPrimary}>
+                    {item.name || item.email}
+                    {item.deviceName ? ` (${item.deviceName})` : ""}
+                  </Text>
                   <TouchableOpacity
                     style={s.grantButton}
                     onPress={() => handleGrant(item)}
-                    disabled={grantingUserId === item.userId}
+                    disabled={grantingDeviceId === item.deviceId}
                   >
                     <Text style={s.grantButtonText}>
-                      {grantingUserId === item.userId ? "Granting…" : "Grant access"}
+                      {grantingDeviceId === item.deviceId ? "Granting…" : "Grant access"}
                     </Text>
                   </TouchableOpacity>
                 </View>
@@ -165,6 +170,27 @@ export default function SettingsScreen({ onClose }) {
             />
           )}
         </View>
+
+        <View style={s.section}>
+          <Text style={s.sectionTitle}>Devices</Text>
+          <Text style={s.hint}>
+            Add a new phone to your own account without needing a saved recovery code — this device (already
+            unlocked) vouches for it directly.
+          </Text>
+          <TouchableOpacity style={s.button} onPress={() => setPairingModalOpen(true)}>
+            <Text style={s.buttonText}>Add a device</Text>
+          </TouchableOpacity>
+        </View>
+
+        {pairingModalOpen ? (
+          <DevicePairingModal
+            householdId={activeHouseholdId}
+            onClose={() => {
+              setPairingModalOpen(false);
+              loadPending();
+            }}
+          />
+        ) : null}
 
         {__DEV__ || isHouseholdOwner ? (
           <View style={s.section}>

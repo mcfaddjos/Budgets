@@ -50,7 +50,7 @@ test("create defaults ownerUserIds to just the creator", async () => {
 test("create accepts multiple owners who are all household members (a shared account)", async () => {
   const secondMember = await createTestUser();
   await db.householdMember.create({
-    data: { householdId: fixture.household.id, userId: secondMember.id, role: "MEMBER", wrappedDek: "wrapped" },
+    data: { householdId: fixture.household.id, userId: secondMember.id, role: "MEMBER" },
   });
 
   const created = await accounts.create(fixture.user, {

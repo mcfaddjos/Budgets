@@ -2,7 +2,7 @@
 
 **Status:** Active development (PoC live, in daily use)
 **Author:** Joe McFadden
-**Last updated:** 2026-09-17 (iOS/Mac migration kickoff: recovery-code redemption confirmed deferred, free-Apple-ID signing decided for the first iOS build)
+**Last updated:** 2026-09-22 (multi-device key material: per-device keys replace the one-slot-per-user design, recovery code and device pairing both built — see §10d)
 
 ## 1. Summary
 
@@ -426,8 +426,11 @@ this list.
 ## 9. Data Model (high level, post §5a/§5b household migration)
 
 - **Household**: id, name (optional), createdAt.
-- **User**: id, googleId, email, name, plus key-material fields for §10a (publicKey, encryptedPrivateKey, vaultKdfSalt, etc.) — **no `householdId` column** (see §5b: membership is a relationship, not a field on User, so one user can belong to more than one household without a schema change). Authoritative field list lives in `backend/prisma/schema.prisma`, kept ahead of this high-level summary.
-- **HouseholdMember**: householdId, userId, role (`owner` | `member`), joinedAt — the join table that actually links users to households.
+- **User**: id, googleId, email, name — identity only, no key material (moved to UserDevice, §10d) and **no `householdId` column** (see §5b: membership is a relationship, not a field on User, so one user can belong to more than one household without a schema change). Authoritative field list lives in `backend/prisma/schema.prisma`, kept ahead of this high-level summary.
+- **UserDevice** (§10d, 2026-09-22): id, userId, name (optional label), publicKey, encryptedPrivateKey, privateKeyNonce, vaultKdfSalt, createdAt, lastSeenAt — one row per device this account has ever registered, so more than one device holds valid, independent access at once.
+- **DeviceHouseholdKey** (§10d): deviceId, householdId, wrappedDek — a household's DEK wrapped once per *device*, replacing the old per-*user* `wrappedDek` on HouseholdMember.
+- **DevicePairingSession** (§10d): id, userId, householdId, newPublicKey/newEncryptedPrivateKey/newPrivateKeyNonce/newVaultKdfSalt/newDeviceMac (nullable, filled by the joining device), wrappedDekForNewDevice (nullable, unused directly — the granting device instead calls the normal grantAccess), createdAt, expiresAt — short-lived relay for device pairing, swept opportunistically once expired.
+- **HouseholdMember**: householdId, userId, role (`owner` | `member`), joinedAt, recoveryWrappedDek/recoveryDekNonce (nullable, §10a — per-user-per-household, not per-device) — the join table that actually links users to households.
 - **Invite**: id, householdId, code, createdByUserId, createdAt, expiresAt (nullable), usedByUserId (nullable) — household-scoped, replacing today's single global `INVITE_CODE`.
 - **Account**: id, householdId, name, type (credit/checking/savings), institution, **ownerUserIds** (2026-09-16 — a plaintext list of member user ids; one for a personal account like a single credit card, more than one for something shared like a household savings account; validated server-side to actually be members of the account's household).
 - **Statement Import**: id, account_id, file type, imported_at, source filename, date range covered.
@@ -636,11 +639,40 @@ removes the friction for the invitee specifically without a permanent
 device-lock-in or a weakened guarantee — but it needs a concrete transport
 design before it's more than a direction.
 
-**Original open questions (creator-vs-invitee consistency and the option-1-vs-2 choice) are resolved by what shipped above.** What's actually still open, post-implementation:
+**Original open questions (creator-vs-invitee consistency and the option-1-vs-2 choice) are resolved by what shipped above.** Recovery-code redemption and true multi-device support are **resolved — see §10d**, built 2026-09-22 (sooner than the 2026-09-17 deferral planned, once actually needing to log into the same account from a second phone during iOS bring-up made the gap concrete). Still open:
 
-- **Recovery-code redemption flow (real gap, deferred to future work — decision, 2026-09-17, see above)**: a "lost this device, here's my recovery code" screen needs to exist — generate/unwrap-DEK plumbing already exists in `keys.js` (`unwrapDekWithRecoveryKey`), but nothing calls it. This almost certainly also needs a **new keypair + updated server-side key material** for the new device, then using the recovery code to re-wrap the household DEK to that new keypair — a real backend change (there's no "replace my key material" action today), not just a UI addition. Not blocking the iOS build; pick up afterward.
 - Add back a biometric/PIN gate on top of the stored secret (deferred above) once there's a device matrix to test `requireAuthentication` against.
-- Multi-device beyond the recovery-code path (e.g., an explicit "authorize a new device" handshake from an already-unlocked device, instead of only recovery-code-or-nothing) — not designed, not blocking today's single-device-per-person usage.
+
+### 10d. Multi-device support: per-device keys, recovery code, and device pairing (decision, 2026-09-22)
+
+Building the iOS install surfaced the real shape of §10c's deferred gap:
+logging into the same account from a second phone didn't just lack a
+recovery flow — the schema itself couldn't support it correctly. `User`
+held exactly one keypair slot (`publicKey`/`encryptedPrivateKey`/etc.), so
+adding a second device would have **silently invalidated the first**
+(whichever device registered most recently would own the only valid
+keypair; the other would fail to decrypt on its next cold start). The
+original recovery-code implementation attempted this session made that
+exact mistake — replacing the one keypair slot — before the bug was
+caught in design and fixed prior to any deploy.
+
+**Fix: key material moved from per-User to per-device.**
+
+- New `UserDevice` model (`publicKey`/`encryptedPrivateKey`/`privateKeyNonce`/`vaultKdfSalt`, one row per device this account has ever registered). `User` itself now holds identity only.
+- New `DeviceHouseholdKey` model replaces `HouseholdMember.wrappedDek` — a household's DEK is wrapped once per **device**, not once per **user**, so two devices under the same account both hold working, independent, simultaneous access. "Pending a grant" is now "this device has no `DeviceHouseholdKey` row for this household yet," which covers a brand-new household member's first device and an existing member's *additional* device identically — `listPendingKeyGrants`/`grantAccess` needed no new concept, just retargeting from `userId` to `deviceId`.
+- `HouseholdMember.recoveryWrappedDek`/`recoveryDekNonce` stay per-user-per-household, unchanged — a recovery code isn't device-specific, and doesn't require another device to be reachable.
+- The database was wiped and re-migrated clean for this change (2026-09-22) rather than writing a backward-compatible data migration — there was no real household data yet worth preserving, and starting clean avoided a much larger migration-plus-dual-read-path effort for zero benefit.
+
+**Two ways to add a device now, both additive (never touch another device's key material):**
+
+1. **Recovery code** (`auth.addDeviceViaRecoveryCode`) — the backstop for "every device is gone." The client unwraps the household DEK client-side with the recovery code (server never sees it), generates a fresh keypair for this device, and registers it. Works with zero dependency on another device being reachable; only as good as actually having saved the code, which is exactly what prompted this session's rebuild — the first recovery code from initial Android setup had been lost before ever being needed.
+2. **Device pairing** (`auth.createPairingSession`/`submitPairingDevice`/`getPairingStatus`/`isPairingComplete`, `app/src/components/DevicePairingModal.js`, `UnlockScreen`'s "Pair with another device") — the **primary** way to add a device going forward, no pre-saved secret required at all. An already-unlocked device generates a random pairing secret (never sent to the server) and shows a code combining it with a server-issued session id; the new device reads/types that code, generates its own keypair, and computes an HMAC of its public key keyed by the pairing secret. The granting device polls, recomputes that HMAC locally, and only wraps the real DEK if it matches — this is what stops a compromised server from substituting its own public key mid-relay to hijack the pairing (the server only ever sees ciphertext-shaped values and a MAC it can't itself verify). Once verified, the granting device calls the **same `grantAccess`** used for invite redemption — no separate "complete pairing" action needed.
+
+**Also changed**: `auth.login`/`auth.me` now take a `deviceId` (persisted client-side in `expo-secure-store` alongside the existing device secret, via `getDeviceId`/`setDeviceId` in `deviceSecret.js`) and return empty key material with `deviceId: null` — not an error — when the caller's device isn't recognized. That's the signal the app uses (`deviceNeedsSetup` in `AuthContext`) to route into recovery-code or pairing instead of a bare failure.
+
+**Verified without touching production**: no Neon credentials were available in this environment (by design, per the project's own secret-handling convention), so the new migration was hand-written to match Prisma's generated-SQL format, then verified for real — applied to a scratch local Postgres instance (`brew install postgresql@16`), diffed against `schema.prisma` with `prisma migrate diff` (zero drift), exercised via the actual Prisma Client, and run through the full Jest integration suite (38 tests, including new coverage for recovery-adds-a-device-without-disturbing-others and the full pairing handshake) before ever being pushed.
+
+**Known limitation, not addressed here**: no "list/revoke my devices" UI yet — a lost phone's device row just sits unused server-side rather than being explicitly removed. Low urgency at today's 1-2-device-per-person scale; would matter more once that's a realistic security concern (a stolen phone whose Keychain hasn't been wiped).
 
 ## 11. Success Metrics
 
@@ -709,7 +741,7 @@ own polish pass, not a feature gap.
 - **M5 — Shared household model (§5a):** household-scoped data, per-transaction attribution, household-aware invite/registration. **Done, 2026-09-16**, shipped as part of the E2EE rewrite.
 - **M6 — Receipt & photo capture (§8.6).**
 - **M7 — iOS standalone build (§14), in progress (started 2026-09-17):** first pass targets a free Apple ID with local Xcode signing (fastest path to a working build on the Mac; 7-day re-signing, Mac-required for renewal) rather than a paid Apple Developer account. Push notifications for large transactions remain a stretch goal alongside this, not a prerequisite.
-- **M7a — Recovery-code redemption (§10c), deferred, decision 2026-09-17:** explicitly pushed behind M7 — build the "lost this device, here's my recovery code" flow (new keypair + server-side key-material replacement + a redemption screen) once the iOS build is working, not before.
+- **M7a — Recovery-code redemption and device pairing (§10d): done, 2026-09-22.** Landed sooner than the M7-then-M7a order originally planned — needing to actually log into the existing account from the iPhone during M7 made the gap immediately blocking rather than deferrable. Shipped as a full per-device key-material redesign (not just a recovery screen), since the original one-keypair-per-user schema couldn't have supported two working devices at once.
 
 ## 14. Backend & Platform History
 
@@ -797,5 +829,5 @@ day one, cheap to set up now versus untangling later.
 - **Leaving a household (§5c, raised 2026-09-16)**: same unresolved DEK-rotation gap as member removal above, plus whether re-joining later preserves old attribution, and whether "one household per user" is actually enforced anywhere.
 - **Platform-level admin (§5d, raised 2026-09-16)**: roadmap only, needs real conversation before design — how a cross-household admin role is modeled, what "manage" can even mean under §10a's zero-knowledge server, not scoped further than that on purpose.
 - **Reports roadmap (§8.8, raised 2026-09-16)**: 3 of 7 cataloged reports aren't built yet (budget variance ranking, per-person breakdown, account breakdown; day-of-week clustering specifically, as distinct from the day-of-month report that shipped) — each needs its own settings/chart-shape design pass before implementation, same as the four that shipped.
-- **Passphrase-free unlock (§10c, decided/built 2026-09-16)**: device-bound secret ships for everyone; what's left is a real recovery-code redemption flow — **explicitly deferred until after the iOS build (decision, 2026-09-17, see §13 M7a)** — and re-adding a biometric gate once there's a device matrix to test it against.
+- **Passphrase-free unlock (§10c, decided/built 2026-09-16)**: device-bound secret ships for everyone; recovery-code redemption and device pairing are **done — see §10d/§13 M7a (2026-09-22)**. What's left is re-adding a biometric gate once there's a device matrix to test it against, and eventually a "list/revoke my devices" screen (§10d's noted limitation).
 - **iOS signing path (§14, decision 2026-09-17)**: free Apple ID chosen for the first build; revisit moving to a paid Apple Developer account + EAS once the free path is proven working, so TestFlight/build-from-anywhere become available.

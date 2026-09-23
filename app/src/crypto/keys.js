@@ -3,7 +3,7 @@
 // that actually protects data — a vault passphrase unlocks a per-user
 // keypair, which household members use to pass around a shared DEK
 // (Data Encryption Key) without the server ever holding it.
-import sodium, { readySodium, toBase64, fromBase64 } from "./sodium";
+import sodium, { readySodium, toBase64, fromBase64, fromUtf8 } from "./sodium";
 
 // INTERACTIVE limits, not MODERATE/SENSITIVE: this runs on login/signup on
 // phones of varying age, and a stronger limit risks OOM on low-RAM
@@ -121,4 +121,41 @@ export function recoveryKeyToDisplayString(recoveryKey) {
 
 export function recoveryKeyFromDisplayString(str) {
   return fromBase64(str);
+}
+
+/**
+ * Device pairing (§10d): the out-of-band secret an already-unlocked device
+ * generates and shows/types to a new device, so the new device can join
+ * without a pre-saved recovery code. Never sent to the server in any form
+ * — only the MAC it produces (below) travels through the pairing-session
+ * relay, and only after the granting device has verified that MAC locally
+ * does it ever wrap the real DEK. crypto_auth's key size doubles as a
+ * reasonable secret size — no separate derivation step needed.
+ */
+export async function generatePairingSecret() {
+  await readySodium();
+  return sodium.randombytes_buf(sodium.crypto_auth_KEYBYTES);
+}
+
+export function pairingSecretToDisplayString(secret) {
+  return toBase64(secret);
+}
+
+export function pairingSecretFromDisplayString(str) {
+  return fromBase64(str);
+}
+
+/**
+ * Computed by the joining device over its own (base64-encoded) public key
+ * and sent alongside it — proves to the granting device that whoever
+ * submitted this public key actually read the pairing code, not just
+ * relayed by (or substituted by) the server in between.
+ */
+export function computePairingMac(pairingSecret, publicKeyB64) {
+  return toBase64(sodium.crypto_auth(fromUtf8(publicKeyB64), pairingSecret));
+}
+
+/** Run by the granting device before it ever wraps the DEK for the submitted public key. */
+export function verifyPairingMac(pairingSecret, publicKeyB64, macB64) {
+  return sodium.crypto_auth_verify(fromBase64(macB64), fromUtf8(publicKeyB64), pairingSecret);
 }
