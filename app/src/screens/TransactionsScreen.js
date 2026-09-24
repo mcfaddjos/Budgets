@@ -20,6 +20,7 @@ import {
 } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
 import TransactionDetailModal from "../components/TransactionDetailModal";
+import MonthYearPickerModal from "../components/MonthYearPickerModal";
 import { captureReceiptPhoto } from "../receipts/capture";
 import { extractFromImage } from "../receipts/extractReceipt";
 import { useThemedStyles } from "../theme/ThemeContext";
@@ -85,6 +86,7 @@ export default function TransactionsScreen() {
   const [pendingReceiptPhoto, setPendingReceiptPhoto] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [detailTx, setDetailTx] = useState(null);
+  const [monthPickerOpen, setMonthPickerOpen] = useState(false);
   const s = useThemedStyles(styles, darkStyles);
 
   function categoryName(categoryId) {
@@ -173,14 +175,18 @@ export default function TransactionsScreen() {
   return (
     <View style={s.container}>
       <View style={s.headerRow}>
-        <View style={s.monthNav}>
-          <TouchableOpacity onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={8}>
-            <Text style={s.monthNavArrow}>‹</Text>
-          </TouchableOpacity>
-          <Text style={s.header}>{formatMonthLabel(month)}</Text>
-          <TouchableOpacity onPress={() => setMonth(shiftMonth(month, 1))} hitSlop={8}>
-            <Text style={s.monthNavArrow}>›</Text>
-          </TouchableOpacity>
+        <View style={s.monthNavRow}>
+          <View style={s.monthNav}>
+            <TouchableOpacity onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={8}>
+              <Text style={s.monthNavArrow}>‹</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMonthPickerOpen(true)}>
+              <Text style={s.header}>{formatMonthLabel(month)}</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setMonth(shiftMonth(month, 1))} hitSlop={8}>
+              <Text style={s.monthNavArrow}>›</Text>
+            </TouchableOpacity>
+          </View>
           {month !== currentMonth() ? (
             <TouchableOpacity onPress={() => setMonth(currentMonth())}>
               <Text style={s.todayLink}>Today</Text>
@@ -260,6 +266,17 @@ export default function TransactionsScreen() {
           onClose={() => setDetailTx(null)}
         />
       ) : null}
+
+      {monthPickerOpen ? (
+        <MonthYearPickerModal
+          month={month}
+          onSelect={(m) => {
+            setMonth(m);
+            setMonthPickerOpen(false);
+          }}
+          onClose={() => setMonthPickerOpen(false)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -267,17 +284,16 @@ export default function TransactionsScreen() {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f7f8" },
   headerRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
     paddingHorizontal: 16,
     paddingTop: 16,
     paddingBottom: 4,
+    gap: 10,
   },
-  header: { fontSize: 14, fontWeight: "600", color: "#888" },
-  monthNav: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
+  monthNavRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  header: { fontSize: 15, fontWeight: "600", color: "#888" },
+  monthNav: { flexDirection: "row", alignItems: "center", gap: 8 },
   monthNavArrow: { fontSize: 20, color: "#1a6ed8", fontWeight: "700", paddingHorizontal: 2 },
-  todayLink: { fontSize: 11, color: "#1a6ed8", fontWeight: "600", marginLeft: 2 },
+  todayLink: { fontSize: 12, color: "#1a6ed8", fontWeight: "600" },
   headerButtons: { flexDirection: "row", gap: 8 },
   scanButton: {
     borderWidth: 1,
