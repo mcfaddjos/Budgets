@@ -11,6 +11,12 @@ function parseAmount(value) {
   return Number.isNaN(n) ? 0 : n;
 }
 
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+
 /**
  * Shared across TransactionsScreen and BudgetsScreen (both top-level
  * buttons, no account implied) — the account picker only shows when there's
@@ -31,6 +37,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   const [accountId, setAccountId] = useState(null);
   const [amount, setAmount] = useState("");
   const [description, setDescription] = useState("");
+  const [date, setDate] = useState(todayIso());
   const [categoryId, setCategoryId] = useState(null);
   const [items, setItems] = useState(undefined);
   const [tax, setTax] = useState("");
@@ -41,6 +48,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     if (visible) {
       setAmount(initialValues?.amount != null ? String(initialValues.amount) : "");
       setDescription(initialValues?.description || "");
+      setDate(DATE_RE.test(initialValues?.date) ? initialValues.date : todayIso());
       setCategoryId(null);
       setAccountId(initialAccountId || null);
       setItems(initialValues?.items ? initialValues.items.map((i) => ({ name: i.name, amount: String(i.amount) })) : undefined);
@@ -85,6 +93,10 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
       Alert.alert("Category required", "Pick a category.");
       return;
     }
+    if (!DATE_RE.test(date)) {
+      Alert.alert("Invalid date", "Enter a date as YYYY-MM-DD, e.g. 2026-09-23.");
+      return;
+    }
     const category = categories.find((c) => c.id === categoryId);
     try {
       const created = await createTransaction.mutateAsync({
@@ -93,7 +105,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
         amount: amt,
         description: description.trim(),
         fallbackDescription: category?.name,
-        date: initialValues?.date,
+        date,
         items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: null })),
         tax: items !== undefined ? parseAmount(tax) : undefined,
         tip: items !== undefined ? parseAmount(tip) : undefined,
@@ -153,6 +165,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
             onChangeText={setDescription}
             placeholder="Description (optional)"
           />
+          <TextInput style={s.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
 
           <Text style={s.label}>Category</Text>
           {categories.length === 0 ? (

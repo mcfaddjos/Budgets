@@ -53,13 +53,25 @@ function currentMonth() {
   return new Date().toISOString().slice(0, 7);
 }
 
+/** month is a "YYYY-MM" string; delta is +1/-1. Going through Date (not string math) handles year rollover for free. */
+function shiftMonth(month, delta) {
+  const [y, m] = month.split("-").map(Number);
+  const d = new Date(y, m - 1 + delta, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+}
+
+function formatMonthLabel(month) {
+  const [y, m] = month.split("-").map(Number);
+  return new Date(y, m - 1, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" });
+}
+
 function formatAmount(amount) {
   const sign = amount < 0 ? "-" : "";
   return `${sign}$${Math.abs(amount).toFixed(2)}`;
 }
 
 export default function TransactionsScreen() {
-  const month = currentMonth();
+  const [month, setMonth] = useState(currentMonth());
   const { data: transactions = [], isPending, isFetching, refetch } = useTransactions(month);
   const { data: categories = [] } = useCategories();
   const recategorize = useRecategorizeTransaction();
@@ -128,6 +140,10 @@ export default function TransactionsScreen() {
     const photo = pendingReceiptPhoto;
     setScanInitialValues(null);
     setPendingReceiptPhoto(null);
+    // A scanned receipt can carry a real date from any month — jump the
+    // view there so the transaction that was just added is actually
+    // visible, instead of silently landing outside the current filter.
+    if (created?.date && created.date.slice(0, 7) !== month) setMonth(created.date.slice(0, 7));
     if (photo && created?.id) {
       try {
         await saveReceiptImage.mutateAsync({ transactionId: created.id, image: photo.base64, mimeType: photo.mimeType });
@@ -157,7 +173,20 @@ export default function TransactionsScreen() {
   return (
     <View style={s.container}>
       <View style={s.headerRow}>
-        <Text style={s.header}>{month}</Text>
+        <View style={s.monthNav}>
+          <TouchableOpacity onPress={() => setMonth(shiftMonth(month, -1))} hitSlop={8}>
+            <Text style={s.monthNavArrow}>‹</Text>
+          </TouchableOpacity>
+          <Text style={s.header}>{formatMonthLabel(month)}</Text>
+          <TouchableOpacity onPress={() => setMonth(shiftMonth(month, 1))} hitSlop={8}>
+            <Text style={s.monthNavArrow}>›</Text>
+          </TouchableOpacity>
+          {month !== currentMonth() ? (
+            <TouchableOpacity onPress={() => setMonth(currentMonth())}>
+              <Text style={s.todayLink}>Today</Text>
+            </TouchableOpacity>
+          ) : null}
+        </View>
         <View style={s.headerButtons}>
           <TouchableOpacity style={s.scanButton} onPress={handleScanPress} disabled={scanning}>
             <Text style={s.scanButtonText}>{scanning ? "Scanning…" : "Scan"}</Text>
@@ -246,6 +275,9 @@ const styles = StyleSheet.create({
     paddingBottom: 4,
   },
   header: { fontSize: 14, fontWeight: "600", color: "#888" },
+  monthNav: { flexDirection: "row", alignItems: "center", gap: 8, flexShrink: 1 },
+  monthNavArrow: { fontSize: 20, color: "#1a6ed8", fontWeight: "700", paddingHorizontal: 2 },
+  todayLink: { fontSize: 11, color: "#1a6ed8", fontWeight: "600", marginLeft: 2 },
   headerButtons: { flexDirection: "row", gap: 8 },
   scanButton: {
     borderWidth: 1,
@@ -293,6 +325,8 @@ const styles = StyleSheet.create({
 const darkStyles = {
   container: { backgroundColor: dark.bg },
   header: { color: dark.textMuted },
+  monthNavArrow: { color: dark.accent },
+  todayLink: { color: dark.accent },
   scanButton: { borderColor: dark.accent },
   scanButtonText: { color: dark.accent },
   addButton: { backgroundColor: dark.accent },
