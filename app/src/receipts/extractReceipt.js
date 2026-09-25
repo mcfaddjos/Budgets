@@ -19,7 +19,8 @@ function sleep(ms) {
 }
 
 function currencyAmount(field) {
-  return field?.valueCurrency?.amount ?? null;
+  const amount = field?.valueCurrency?.amount;
+  return amount == null ? null : Math.abs(amount);
 }
 
 /**
@@ -134,7 +135,7 @@ export async function extractGeneric(imageBase64, mimeType, kind) {
 
   return {
     vendor: toolUse.input.vendor || null,
-    amount: toolUse.input.amount ?? null,
+    amount: toolUse.input.amount == null ? null : Math.abs(toolUse.input.amount),
     date: toolUse.input.date || null,
     description: toolUse.input.description || toolUse.input.vendor || null,
   };

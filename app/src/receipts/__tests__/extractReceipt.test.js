@@ -79,6 +79,46 @@ describe("extractReceipt (Azure)", () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
+  test("normalizes a negative total/tax/tip/item amount to positive — a scan is always a purchase, never a credit", async () => {
+    process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_ENDPOINT = "https://example.cognitiveservices.azure.com";
+    process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_KEY = "test-key";
+    const { extractReceipt } = loadModule();
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 202,
+        headers: { get: (name) => (name === "operation-location" ? "https://example.com/poll" : null) },
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          status: "succeeded",
+          analyzeResult: {
+            documents: [
+              {
+                confidence: 0.9,
+                fields: {
+                  MerchantName: { valueString: "Shell" },
+                  TotalTax: { valueCurrency: { amount: -1.5 } },
+                  Total: { valueCurrency: { amount: -45.67 } },
+                  Items: {
+                    valueArray: [
+                      { valueObject: { Description: { valueString: "Gas" }, TotalPrice: { valueCurrency: { amount: -44.17 } } } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      });
+
+    const result = await extractReceipt("base64img");
+    expect(result.total).toBe(45.67);
+    expect(result.tax).toBe(1.5);
+    expect(result.items[0].amount).toBe(44.17);
+  });
+
   test("throws when the analyze call itself is rejected (non-202)", async () => {
     process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_ENDPOINT = "https://example.cognitiveservices.azure.com";
     process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_KEY = "test-key";
