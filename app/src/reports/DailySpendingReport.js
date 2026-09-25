@@ -41,7 +41,7 @@ export default function DailySpendingReport() {
 
   return (
     <View>
-      <MonthNav month={month} onChange={(delta) => setMonth((m) => shiftMonth(m, delta))} />
+      <MonthNav month={month} onChange={(delta) => setMonth((m) => shiftMonth(m, delta))} onSelect={setMonth} />
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
         <Chip label="Whole Budget" active={!categoryId} onPress={() => setCategoryId(null)} />

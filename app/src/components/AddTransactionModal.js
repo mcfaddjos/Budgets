@@ -1,7 +1,13 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useCategoryRules, useCreateManualTransaction, useTransactionFormOptions, useUpdateTransaction } from "../data/queries";
-import { categorize, normalizeDescription } from "../categorize/defaults";
+import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import {
+  useCategoryRules,
+  useCreateManualTransaction,
+  useSaveCategoryRule,
+  useTransactionFormOptions,
+  useUpdateTransaction,
+} from "../data/queries";
+import { categorize, categorizeItem, normalizeDescription } from "../categorize/defaults";
 import FormModal from "./FormModal";
 import { useThemedStyles } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
@@ -39,6 +45,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   const { data: categoryRules = [] } = useCategoryRules();
   const createTransaction = useCreateManualTransaction();
   const updateTransaction = useUpdateTransaction();
+  const saveCategoryRule = useSaveCategoryRule();
   const accounts = data?.accounts ?? [];
   const categories = data?.categories ?? [];
 
@@ -50,6 +57,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   const [items, setItems] = useState(undefined);
   const [tax, setTax] = useState("");
   const [tip, setTip] = useState("");
+  const [itemCategoryPickerIndex, setItemCategoryPickerIndex] = useState(null);
   const s = useThemedStyles(styles, darkStyles);
 
   useEffect(() => {
@@ -60,7 +68,9 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     setDate(DATE_RE.test(source?.date) ? source.date : todayIso());
     setCategoryId(editingTransaction?.categoryId || null);
     setAccountId(editingTransaction?.accountId || initialAccountId || null);
-    setItems(source?.items ? source.items.map((i) => ({ name: i.name, amount: String(i.amount) })) : undefined);
+    setItems(
+      source?.items ? source.items.map((i) => ({ name: i.name, amount: String(i.amount), categoryId: i.categoryId })) : undefined
+    );
     setTax(source?.tax != null ? String(source.tax) : "");
     setTip(source?.tip != null ? String(source.tip) : "");
   }, [visible, initialAccountId, initialValues, editingTransaction]);
@@ -77,6 +87,35 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     if (guess) setCategoryId(guess);
   }, [visible, initialValues, categories, categoryRules, categoryId]);
 
+  /**
+   * Per-item category guess (PRD §8.6) — same cheap keyword-dictionary
+   * approach as the whole-transaction guess above, against
+   * ITEM_DEFAULT_RULES (product keywords) instead of DEFAULT_RULES
+   * (merchant keywords) since an item name is a different vocabulary than
+   * a transaction description. `categoryId === undefined` is the "not yet
+   * guessed" sentinel (vs `null`, an attempted guess that found nothing,
+   * or a real id, picked/loaded) — that's what keeps this from re-running
+   * every render: once every item has a definite value, the mapped array
+   * is reference-identical to the last one it produced (nothing to change,
+   * so `setItems` isn't even called), so the effect has nothing left to
+   * react to. A blank name (just-added item, before typing) stays
+   * undefined on purpose so it gets guessed once a name actually exists.
+   */
+  useEffect(() => {
+    if (!visible || !items || categories.length === 0) return;
+    const categoryIdByName = Object.fromEntries(categories.map((c) => [c.name, c.id]));
+    setItems((prev) => {
+      if (!prev) return prev;
+      let changed = false;
+      const next = prev.map((item) => {
+        if (item.categoryId !== undefined || !item.name?.trim()) return item;
+        changed = true;
+        return { ...item, categoryId: categorizeItem(normalizeDescription(item.name), categoryRules, categoryIdByName) };
+      });
+      return changed ? next : prev;
+    });
+  }, [visible, items, categories, categoryRules]);
+
   function addItem() {
     setItems((prev) => [...(prev || []), { name: "", amount: "" }]);
   }
@@ -85,6 +124,21 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   }
   function removeItem(index) {
     setItems((prev) => prev.filter((_, i) => i !== index));
+  }
+
+  /**
+   * Picking a category for an item also saves a household rule for it
+   * (same always-on learning as TransactionsScreen's whole-transaction
+   * recategorize) — best-effort: a failed rule save shouldn't block the
+   * pick itself, the category is already applied locally either way.
+   */
+  function handlePickItemCategory(category) {
+    const index = itemCategoryPickerIndex;
+    setItemCategoryPickerIndex(null);
+    if (index === null) return;
+    const itemName = items[index]?.name?.trim();
+    updateItem(index, "categoryId", category.id);
+    if (itemName) saveCategoryRule.mutateAsync({ normalizedDescription: normalizeDescription(itemName), categoryId: category.id }).catch(() => {});
   }
 
   async function handleSave() {
@@ -113,7 +167,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
       description: description.trim(),
       fallbackDescription: category?.name,
       date,
-      items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: null })),
+      items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: i.categoryId ?? null })),
       tax: items !== undefined ? parseAmount(tax) : undefined,
       tip: items !== undefined ? parseAmount(tip) : undefined,
     };
@@ -132,6 +186,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   }
 
   return (
+    <>
     <FormModal visible={visible} onClose={onClose}>
       <Text style={s.modalTitle}>{editingTransaction ? "Edit transaction" : "Add transaction"}</Text>
 
@@ -202,22 +257,29 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
             <>
               <Text style={s.label}>Items</Text>
               {items.map((item, index) => (
-                <View key={index} style={s.itemRow}>
-                  <TextInput
-                    style={[s.input, s.itemNameInput]}
-                    value={item.name}
-                    onChangeText={(v) => updateItem(index, "name", v)}
-                    placeholder="Item"
-                  />
-                  <TextInput
-                    style={[s.input, s.itemAmountInput]}
-                    value={item.amount}
-                    onChangeText={(v) => updateItem(index, "amount", v)}
-                    keyboardType="decimal-pad"
-                    placeholder="0.00"
-                  />
-                  <TouchableOpacity onPress={() => removeItem(index)} style={s.itemRemove}>
-                    <Text style={s.itemRemoveText}>×</Text>
+                <View key={index} style={s.itemCard}>
+                  <View style={s.itemRow}>
+                    <TextInput
+                      style={[s.input, s.itemNameInput]}
+                      value={item.name}
+                      onChangeText={(v) => updateItem(index, "name", v)}
+                      placeholder="Item"
+                    />
+                    <TextInput
+                      style={[s.input, s.itemAmountInput]}
+                      value={item.amount}
+                      onChangeText={(v) => updateItem(index, "amount", v)}
+                      keyboardType="decimal-pad"
+                      placeholder="0.00"
+                    />
+                    <TouchableOpacity onPress={() => removeItem(index)} style={s.itemRemove}>
+                      <Text style={s.itemRemoveText}>×</Text>
+                    </TouchableOpacity>
+                  </View>
+                  <TouchableOpacity style={s.itemCategoryButton} onPress={() => setItemCategoryPickerIndex(index)}>
+                    <Text style={s.itemCategoryButtonText} numberOfLines={1}>
+                      {categories.find((c) => c.id === item.categoryId)?.name || "Pick a category"}
+                    </Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -255,6 +317,25 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
         </TouchableOpacity>
       </View>
     </FormModal>
+
+    <Modal
+      visible={itemCategoryPickerIndex !== null}
+      transparent
+      animationType="slide"
+      onRequestClose={() => setItemCategoryPickerIndex(null)}
+    >
+      <TouchableOpacity style={s.modalBackdrop} activeOpacity={1} onPress={() => setItemCategoryPickerIndex(null)}>
+        <View style={s.modalSheet}>
+          <Text style={s.modalSheetTitle}>Category</Text>
+          {categories.map((c) => (
+            <TouchableOpacity key={c.id} style={s.modalItem} onPress={() => handlePickItemCategory(c)}>
+              <Text style={s.modalItemText}>{c.name}</Text>
+            </TouchableOpacity>
+          ))}
+        </View>
+      </TouchableOpacity>
+    </Modal>
+    </>
   );
 }
 
@@ -292,15 +373,30 @@ const styles = StyleSheet.create({
   primaryButtonText: { color: "#fff", fontWeight: "600" },
   secondaryButton: { paddingVertical: 10, paddingHorizontal: 18 },
   secondaryButtonText: { color: "#666" },
+  itemCard: { marginBottom: 10 },
   itemRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  itemNameInput: { flex: 1 },
-  itemAmountInput: { width: 80 },
-  itemRemove: { paddingHorizontal: 4, paddingBottom: 10 },
+  itemNameInput: { flex: 1, marginBottom: 6 },
+  itemAmountInput: { width: 80, marginBottom: 6 },
+  itemRemove: { paddingHorizontal: 4, paddingBottom: 16 },
   itemRemoveText: { fontSize: 20, color: "#c0392b" },
+  itemCategoryButton: {
+    alignSelf: "flex-start",
+    borderWidth: 1,
+    borderColor: "#ddd",
+    borderRadius: 14,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+  },
+  itemCategoryButtonText: { fontSize: 12, color: "#1a6ed8", fontWeight: "600" },
   addItemButton: { alignSelf: "flex-start", marginBottom: 16 },
   addItemButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
   taxTipRow: { flexDirection: "row", gap: 10 },
   taxTipField: { flex: 1 },
+  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "flex-end" },
+  modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: "70%" },
+  modalSheetTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8, textAlign: "center" },
+  modalItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
+  modalItemText: { fontSize: 15, color: "#1a1a1a" },
 });
 
 const darkStyles = {
@@ -317,5 +413,11 @@ const darkStyles = {
   primaryButton: { backgroundColor: dark.accent },
   secondaryButtonText: { color: dark.textMuted },
   itemRemoveText: { color: dark.danger },
+  itemCategoryButton: { borderColor: dark.border, backgroundColor: dark.chipBg },
+  itemCategoryButtonText: { color: dark.accent },
   addItemButtonText: { color: dark.accent },
+  modalSheet: { backgroundColor: dark.card },
+  modalSheetTitle: { color: dark.text },
+  modalItem: { borderBottomColor: dark.border },
+  modalItemText: { color: dark.text },
 };

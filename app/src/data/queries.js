@@ -106,6 +106,22 @@ export function useCreateManualTransaction() {
   });
 }
 
+/**
+ * Standalone rule-save, for anywhere a category gets picked outside the
+ * whole-transaction recategorize flow (useRecategorizeTransaction bundles
+ * this same repo call in, tied to a specific tx) — e.g. picking a
+ * category for one item on a scanned receipt.
+ */
+export function useSaveCategoryRule() {
+  const householdId = useHouseholdId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ normalizedDescription, categoryId }) =>
+      repo.saveRuleForDescription(householdId, normalizedDescription, categoryId),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: queryKeys.categoryRules(householdId) }),
+  });
+}
+
 export function useUpdateTransaction() {
   const householdId = useHouseholdId();
   const queryClient = useQueryClient();

@@ -36,7 +36,7 @@ export default function CategorySpendReport() {
 
   return (
     <View>
-      <MonthNav month={month} onChange={(delta) => setMonth((m) => shiftMonth(m, delta))} />
+      <MonthNav month={month} onChange={(delta) => setMonth((m) => shiftMonth(m, delta))} onSelect={setMonth} />
 
       {isPending ? (
         <ActivityIndicator style={{ marginTop: 24 }} />

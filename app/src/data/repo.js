@@ -102,10 +102,10 @@ export async function listTransactions(householdId, params) {
  *
  * items/tax/tip (PRD §8.6) are optional — undefined for a plain manual
  * entry, populated when this transaction came from a scanned receipt.
- * Each item is `{ description, amount, categoryId }`; categoryId is
- * schema-ready but unused in v1 (no UI sets it yet). They live inside the
- * same encryptedData blob as everything else — records.encryptRecord is
- * generic, so this needed no changes there.
+ * Each item is `{ description, amount, categoryId }` — categoryId is the
+ * per-item category chosen (or guessed, see categorizeItem) in the scan
+ * review UI. They live inside the same encryptedData blob as everything
+ * else — records.encryptRecord is generic, so this needed no changes there.
  */
 export async function createManualTransaction(
   householdId,

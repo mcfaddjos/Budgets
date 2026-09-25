@@ -13,12 +13,10 @@ import {
 import { useBudgetSummary, useCreateCategory, useSetBudget, useUpdateCategory } from "../data/queries";
 import AddTransactionModal from "../components/AddTransactionModal";
 import FormModal from "../components/FormModal";
+import MonthNav from "../reports/MonthNav";
+import { currentMonth, shiftMonth } from "../reports/months";
 import { useThemedStyles } from "../theme/ThemeContext";
 import { dark } from "../theme/palette";
-
-function currentMonth() {
-  return new Date().toISOString().slice(0, 7);
-}
 
 function formatMoney(amount) {
   const sign = amount < 0 ? "-" : "";
@@ -26,7 +24,7 @@ function formatMoney(amount) {
 }
 
 export default function BudgetsScreen() {
-  const month = currentMonth();
+  const [month, setMonth] = useState(currentMonth());
   const { data, isPending, isFetching, refetch } = useBudgetSummary(month);
   const updateCategory = useUpdateCategory();
   const setBudget = useSetBudget();
@@ -97,7 +95,7 @@ export default function BudgetsScreen() {
   return (
     <View style={s.container}>
       <View style={s.summary}>
-        <Text style={s.summaryLabel}>{month}</Text>
+        <MonthNav month={month} onChange={(delta) => setMonth((m) => shiftMonth(m, delta))} onSelect={setMonth} />
         <View style={s.summaryRow}>
           <SummaryStat label="Budgeted" value={formatMoney(totals.budget)} s={s} />
           <SummaryStat label="Spent" value={formatMoney(totals.actual)} s={s} />
@@ -218,7 +216,6 @@ function SummaryStat({ label, value, color, s }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f7f7f8" },
   summary: { backgroundColor: "#fff", padding: 16, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  summaryLabel: { fontSize: 13, color: "#888", marginBottom: 8 },
   summaryRow: { flexDirection: "row", justifyContent: "space-between" },
   summaryActions: { flexDirection: "row", gap: 8, marginTop: 12 },
   loadingBox: { alignItems: "center", paddingVertical: 40, gap: 8 },
@@ -271,7 +268,6 @@ const styles = StyleSheet.create({
 const darkStyles = {
   container: { backgroundColor: dark.bg },
   summary: { backgroundColor: dark.card, borderBottomColor: dark.border },
-  summaryLabel: { color: dark.textMuted },
   loadingText: { color: dark.textMuted },
   addButton: { backgroundColor: dark.accent },
   statLabel: { color: dark.textFaint },
