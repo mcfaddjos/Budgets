@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { ActivityIndicator, Alert, Modal, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
 import {
   useCategoryRules,
   useCreateManualTransaction,
@@ -92,14 +92,22 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
    * approach as the whole-transaction guess above, against
    * ITEM_DEFAULT_RULES (product keywords) instead of DEFAULT_RULES
    * (merchant keywords) since an item name is a different vocabulary than
-   * a transaction description. `categoryId === undefined` is the "not yet
-   * guessed" sentinel (vs `null`, an attempted guess that found nothing,
-   * or a real id, picked/loaded) — that's what keeps this from re-running
-   * every render: once every item has a definite value, the mapped array
-   * is reference-identical to the last one it produced (nothing to change,
-   * so `setItems` isn't even called), so the effect has nothing left to
-   * react to. A blank name (just-added item, before typing) stays
-   * undefined on purpose so it gets guessed once a name actually exists.
+   * a transaction description.
+   *
+   * `categoryId == null` (covers both `undefined` — a fresh scan, which
+   * never sets the field — and `null`, the value every item was saved
+   * with before this feature existed) is the "not yet guessed" sentinel.
+   * An attempted guess that found nothing is marked `false`, not `null`,
+   * specifically so it reads as resolved and doesn't get re-tried on every
+   * keystroke — reusing `null` for that would make an unmatched item look
+   * "not yet guessed" forever, re-running (and reallocating the items
+   * array) on every render, which never converges. `false` gets mapped
+   * back to `null` at save time (handleSave), since the backend only ever
+   * expects a real id or null. Once every item has a resolved value, the
+   * mapped array is reference-identical to the last one it produced, so
+   * `setItems` isn't even called and the effect has nothing left to react
+   * to. A blank name (just-added item, before typing) is left alone so it
+   * gets guessed once a name actually exists.
    */
   useEffect(() => {
     if (!visible || !items || categories.length === 0) return;
@@ -108,9 +116,9 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
       if (!prev) return prev;
       let changed = false;
       const next = prev.map((item) => {
-        if (item.categoryId !== undefined || !item.name?.trim()) return item;
+        if (item.categoryId != null || !item.name?.trim()) return item;
         changed = true;
-        return { ...item, categoryId: categorizeItem(normalizeDescription(item.name), categoryRules, categoryIdByName) };
+        return { ...item, categoryId: categorizeItem(normalizeDescription(item.name), categoryRules, categoryIdByName) ?? false };
       });
       return changed ? next : prev;
     });
@@ -167,7 +175,7 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
       description: description.trim(),
       fallbackDescription: category?.name,
       date,
-      items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: i.categoryId ?? null })),
+      items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: i.categoryId || null })),
       tax: items !== undefined ? parseAmount(tax) : undefined,
       tip: items !== undefined ? parseAmount(tip) : undefined,
     };
@@ -185,157 +193,159 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     }
   }
 
-  return (
-    <>
-    <FormModal visible={visible} onClose={onClose}>
-      <Text style={s.modalTitle}>{editingTransaction ? "Edit transaction" : "Add transaction"}</Text>
+  const pickingItemCategory = itemCategoryPickerIndex !== null;
 
-      {isPending ? (
-        <View style={s.loadingBox}>
-          <ActivityIndicator />
-          <Text style={s.loadingText}>Loading accounts and categories…</Text>
-        </View>
-      ) : isError ? (
-        <View style={s.loadingBox}>
-          <Text style={s.errorText}>{error.message}</Text>
-          <TouchableOpacity style={s.retryButton} onPress={refetch}>
-            <Text style={s.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        </View>
+  return (
+    <FormModal visible={visible} onClose={onClose}>
+      {pickingItemCategory ? (
+        <>
+          <Text style={s.modalTitle}>Category for "{items[itemCategoryPickerIndex]?.name?.trim() || "item"}"</Text>
+          <View style={s.chipRow}>
+            {categories.map((c) => (
+              <TouchableOpacity key={c.id} style={s.chip} onPress={() => handlePickItemCategory(c)}>
+                <Text style={s.chipText}>{c.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <View style={s.formActions}>
+            <TouchableOpacity style={s.secondaryButton} onPress={() => setItemCategoryPickerIndex(null)}>
+              <Text style={s.secondaryButtonText}>Back</Text>
+            </TouchableOpacity>
+          </View>
+        </>
       ) : (
         <>
-          {accounts.length > 1 ? (
-            <>
-              <Text style={s.label}>Account</Text>
+        <Text style={s.modalTitle}>{editingTransaction ? "Edit transaction" : "Add transaction"}</Text>
+
+        {isPending ? (
+          <View style={s.loadingBox}>
+            <ActivityIndicator />
+            <Text style={s.loadingText}>Loading accounts and categories…</Text>
+          </View>
+        ) : isError ? (
+          <View style={s.loadingBox}>
+            <Text style={s.errorText}>{error.message}</Text>
+            <TouchableOpacity style={s.retryButton} onPress={refetch}>
+              <Text style={s.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <>
+            {accounts.length > 1 ? (
+              <>
+                <Text style={s.label}>Account</Text>
+                <View style={s.chipRow}>
+                  {accounts.map((a) => (
+                    <TouchableOpacity
+                      key={a.id}
+                      style={[s.chip, accountId === a.id && s.chipActive]}
+                      onPress={() => setAccountId(a.id)}
+                    >
+                      <Text style={[s.chipText, accountId === a.id && s.chipTextActive]}>{a.name}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            ) : null}
+
+            <TextInput
+              style={s.input}
+              value={amount}
+              onChangeText={setAmount}
+              keyboardType="decimal-pad"
+              placeholder="Amount (e.g. 12.50)"
+            />
+            <TextInput
+              style={s.input}
+              value={description}
+              onChangeText={setDescription}
+              placeholder="Description (optional)"
+            />
+            <TextInput style={s.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
+
+            <Text style={s.label}>Category</Text>
+            {categories.length === 0 ? (
+              <Text style={s.empty}>No categories yet.</Text>
+            ) : (
               <View style={s.chipRow}>
-                {accounts.map((a) => (
+                {categories.map((c) => (
                   <TouchableOpacity
-                    key={a.id}
-                    style={[s.chip, accountId === a.id && s.chipActive]}
-                    onPress={() => setAccountId(a.id)}
+                    key={c.id}
+                    style={[s.chip, categoryId === c.id && s.chipActive]}
+                    onPress={() => setCategoryId(c.id)}
                   >
-                    <Text style={[s.chipText, accountId === a.id && s.chipTextActive]}>{a.name}</Text>
+                    <Text style={[s.chipText, categoryId === c.id && s.chipTextActive]}>{c.name}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
-            </>
-          ) : null}
+            )}
 
-          <TextInput
-            style={s.input}
-            value={amount}
-            onChangeText={setAmount}
-            keyboardType="decimal-pad"
-            placeholder="Amount (e.g. 12.50)"
-          />
-          <TextInput
-            style={s.input}
-            value={description}
-            onChangeText={setDescription}
-            placeholder="Description (optional)"
-          />
-          <TextInput style={s.input} value={date} onChangeText={setDate} placeholder="YYYY-MM-DD" />
-
-          <Text style={s.label}>Category</Text>
-          {categories.length === 0 ? (
-            <Text style={s.empty}>No categories yet.</Text>
-          ) : (
-            <View style={s.chipRow}>
-              {categories.map((c) => (
-                <TouchableOpacity
-                  key={c.id}
-                  style={[s.chip, categoryId === c.id && s.chipActive]}
-                  onPress={() => setCategoryId(c.id)}
-                >
-                  <Text style={[s.chipText, categoryId === c.id && s.chipTextActive]}>{c.name}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-          )}
-
-          {items !== undefined ? (
-            <>
-              <Text style={s.label}>Items</Text>
-              {items.map((item, index) => (
-                <View key={index} style={s.itemCard}>
-                  <View style={s.itemRow}>
-                    <TextInput
-                      style={[s.input, s.itemNameInput]}
-                      value={item.name}
-                      onChangeText={(v) => updateItem(index, "name", v)}
-                      placeholder="Item"
-                    />
-                    <TextInput
-                      style={[s.input, s.itemAmountInput]}
-                      value={item.amount}
-                      onChangeText={(v) => updateItem(index, "amount", v)}
-                      keyboardType="decimal-pad"
-                      placeholder="0.00"
-                    />
-                    <TouchableOpacity onPress={() => removeItem(index)} style={s.itemRemove}>
-                      <Text style={s.itemRemoveText}>×</Text>
+            {items !== undefined ? (
+              <>
+                <Text style={s.label}>Items</Text>
+                {items.map((item, index) => (
+                  <View key={index} style={s.itemCard}>
+                    <View style={s.itemRow}>
+                      <TextInput
+                        style={[s.input, s.itemNameInput]}
+                        value={item.name}
+                        onChangeText={(v) => updateItem(index, "name", v)}
+                        placeholder="Item"
+                      />
+                      <TextInput
+                        style={[s.input, s.itemAmountInput]}
+                        value={item.amount}
+                        onChangeText={(v) => updateItem(index, "amount", v)}
+                        keyboardType="decimal-pad"
+                        placeholder="0.00"
+                      />
+                      <TouchableOpacity onPress={() => removeItem(index)} style={s.itemRemove}>
+                        <Text style={s.itemRemoveText}>×</Text>
+                      </TouchableOpacity>
+                    </View>
+                    <TouchableOpacity style={s.itemCategoryButton} onPress={() => setItemCategoryPickerIndex(index)}>
+                      <Text style={s.itemCategoryButtonText} numberOfLines={1}>
+                        {categories.find((c) => c.id === item.categoryId)?.name || "Pick a category"}
+                      </Text>
                     </TouchableOpacity>
                   </View>
-                  <TouchableOpacity style={s.itemCategoryButton} onPress={() => setItemCategoryPickerIndex(index)}>
-                    <Text style={s.itemCategoryButtonText} numberOfLines={1}>
-                      {categories.find((c) => c.id === item.categoryId)?.name || "Pick a category"}
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-              <TouchableOpacity onPress={addItem} style={s.addItemButton}>
-                <Text style={s.addItemButtonText}>+ Add item</Text>
-              </TouchableOpacity>
+                ))}
+                <TouchableOpacity onPress={addItem} style={s.addItemButton}>
+                  <Text style={s.addItemButtonText}>+ Add item</Text>
+                </TouchableOpacity>
 
-              <View style={s.taxTipRow}>
-                <View style={s.taxTipField}>
-                  <Text style={s.label}>Tax</Text>
-                  <TextInput style={s.input} value={tax} onChangeText={setTax} keyboardType="decimal-pad" placeholder="0.00" />
+                <View style={s.taxTipRow}>
+                  <View style={s.taxTipField}>
+                    <Text style={s.label}>Tax</Text>
+                    <TextInput style={s.input} value={tax} onChangeText={setTax} keyboardType="decimal-pad" placeholder="0.00" />
+                  </View>
+                  <View style={s.taxTipField}>
+                    <Text style={s.label}>Tip</Text>
+                    <TextInput style={s.input} value={tip} onChangeText={setTip} keyboardType="decimal-pad" placeholder="0.00" />
+                  </View>
                 </View>
-                <View style={s.taxTipField}>
-                  <Text style={s.label}>Tip</Text>
-                  <TextInput style={s.input} value={tip} onChangeText={setTip} keyboardType="decimal-pad" placeholder="0.00" />
-                </View>
-              </View>
-            </>
-          ) : null}
+              </>
+            ) : null}
+          </>
+        )}
+
+        <View style={s.formActions}>
+          <TouchableOpacity style={s.secondaryButton} onPress={onClose}>
+            <Text style={s.secondaryButtonText}>Cancel</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={s.primaryButton}
+            onPress={handleSave}
+            disabled={createTransaction.isPending || updateTransaction.isPending || isPending || isError}
+          >
+            <Text style={s.primaryButtonText}>
+              {createTransaction.isPending || updateTransaction.isPending ? "Saving…" : "Save"}
+            </Text>
+          </TouchableOpacity>
+        </View>
         </>
       )}
-
-      <View style={s.formActions}>
-        <TouchableOpacity style={s.secondaryButton} onPress={onClose}>
-          <Text style={s.secondaryButtonText}>Cancel</Text>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={s.primaryButton}
-          onPress={handleSave}
-          disabled={createTransaction.isPending || updateTransaction.isPending || isPending || isError}
-        >
-          <Text style={s.primaryButtonText}>
-            {createTransaction.isPending || updateTransaction.isPending ? "Saving…" : "Save"}
-          </Text>
-        </TouchableOpacity>
-      </View>
     </FormModal>
-
-    <Modal
-      visible={itemCategoryPickerIndex !== null}
-      transparent
-      animationType="slide"
-      onRequestClose={() => setItemCategoryPickerIndex(null)}
-    >
-      <TouchableOpacity style={s.modalBackdrop} activeOpacity={1} onPress={() => setItemCategoryPickerIndex(null)}>
-        <View style={s.modalSheet}>
-          <Text style={s.modalSheetTitle}>Category</Text>
-          {categories.map((c) => (
-            <TouchableOpacity key={c.id} style={s.modalItem} onPress={() => handlePickItemCategory(c)}>
-              <Text style={s.modalItemText}>{c.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </TouchableOpacity>
-    </Modal>
-    </>
   );
 }
 
@@ -392,11 +402,6 @@ const styles = StyleSheet.create({
   addItemButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
   taxTipRow: { flexDirection: "row", gap: 10 },
   taxTipField: { flex: 1 },
-  modalBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.3)", justifyContent: "flex-end" },
-  modalSheet: { backgroundColor: "#fff", borderTopLeftRadius: 16, borderTopRightRadius: 16, padding: 16, maxHeight: "70%" },
-  modalSheetTitle: { fontSize: 16, fontWeight: "700", marginBottom: 8, textAlign: "center" },
-  modalItem: { paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: "#eee" },
-  modalItemText: { fontSize: 15, color: "#1a1a1a" },
 });
 
 const darkStyles = {
@@ -416,8 +421,4 @@ const darkStyles = {
   itemCategoryButton: { borderColor: dark.border, backgroundColor: dark.chipBg },
   itemCategoryButtonText: { color: dark.accent },
   addItemButtonText: { color: dark.accent },
-  modalSheet: { backgroundColor: dark.card },
-  modalSheetTitle: { color: dark.text },
-  modalItem: { borderBottomColor: dark.border },
-  modalItemText: { color: dark.text },
 };
