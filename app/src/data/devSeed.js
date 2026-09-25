@@ -7,15 +7,17 @@
 // the household DEK (§10a), which never leaves the device, so seeding has
 // to happen through the app's own live session.
 //
-// Sourced from the real "Spend Less - Sept 2026.csv" export (an earlier
-// attempt to parse a pasted-into-chat version of this same sheet was
-// ambiguous — whitespace collapsed several blank cells together — the
-// real CSV resolves every cell cleanly). The sheet's structure: row 1 is
-// the September budget amount per category; each later row is one or
-// more same-row transactions across different categories, with note
-// sub-columns paired to specific categories (e.g. "Flowers" paired with
-// a Shopping amount) plus one shared note column covering Outside
-// Fud-through-Wellness.
+// Sourced directly from the "Spend Less" Google Sheet (jak.mcfadden@gmail.com,
+// shared into this household's Drive — read via the Drive connector, both
+// the "Master" and "Sept 2026" tabs). The September tab's structure: one
+// pair of columns per category (an amount column + a paired notes column),
+// each row down a pair is one transaction — categories don't share rows,
+// each column just has however many entries it has, so "row 4" in one
+// category's column has nothing to do with "row 4" in another's beyond
+// both being an approximate point in the month (used below as a rough,
+// shared placeholder date across categories, since the sheet itself
+// doesn't record real dates — the exception is where a date is already
+// embedded in a description, e.g. "Smith brothers 9/4").
 import * as repo from "./repo";
 
 const SEPTEMBER = "2026-09";
@@ -31,15 +33,14 @@ export const SEPTEMBER_CATEGORY_NAMES = [
   "Wellness",
   "Shopping",
   "Cleaning",
+  "Home",
   "Car",
 ];
 
-// From the authoritative "Spend Less - Master.csv" budget sheet (row 3),
-// not the September sheet's own row 1 — that row mixed budget-looking
-// numbers with what turned out to be leftover/ambiguous note artifacts
-// (e.g. a literal "Notes" placeholder sitting in a value position). The
-// master sheet's total (8400) matches the total budgeted figure already
-// seen in the app, confirming this is the right source.
+// From the "Master" tab (row 3) — its own Total cell (9000) is the sum of
+// all 12 of these, confirming this is the right, authoritative source
+// (the September tab's own header row is a running "remaining budget"
+// figure, not the budget itself, and shouldn't be used for this).
 const SEPTEMBER_BUDGETS = {
   "Home Fud": 1000,
   "Outside Fud": 500,
@@ -47,52 +48,75 @@ const SEPTEMBER_BUDGETS = {
   Partying: 500,
   Pets: 200,
   Bills: 3300,
-  Health: 300,
+  Health: 400,
   Wellness: 400,
   Shopping: 500,
   Cleaning: 200,
+  Home: 500,
   Car: 1000,
 };
 
-// Rows without an explicit date (most of them) get an approximate,
-// roughly-chronological placeholder date within September — the sheet
-// doesn't record one. The two "Smith brothers" entries use the dates
-// already embedded in their own descriptions.
 const SEPTEMBER_TRANSACTIONS = [
-  // Row 2 of the sheet (~week 1)
+  // ~week 1
   { category: "Home Fud", amount: -70, date: "2026-09-03" },
   { category: "Outside Fud", amount: -60, date: "2026-09-03" },
   { category: "Travel", amount: -15, date: "2026-09-03" },
   { category: "Partying", amount: -110, date: "2026-09-03" },
-  { category: "Bills", amount: -3300, date: "2026-09-03" },
+  { category: "Pets", amount: -72.87, description: "food +  2 dog toys", date: "2026-09-03" },
+  { category: "Bills", amount: -3300, description: "Standard mortgage, tv, phone, electric, water, trash", date: "2026-09-03" },
   { category: "Wellness", amount: -120, date: "2026-09-03" },
   { category: "Shopping", amount: -20, description: "Flowers", date: "2026-09-03" },
   { category: "Cleaning", amount: -105, date: "2026-09-03" },
-  { category: "Car", amount: -65, date: "2026-09-03" },
+  { category: "Home", amount: -30.58, description: "kitchen mats", date: "2026-09-03" },
+  { category: "Car", amount: -65, description: "Gas", date: "2026-09-03" },
 
-  // Row 3 of the sheet (~week 2)
+  // ~week 2
   { category: "Home Fud", amount: -11, date: "2026-09-10" },
   { category: "Outside Fud", amount: -70, date: "2026-09-10" },
   { category: "Partying", amount: -100, date: "2026-09-10" },
+  { category: "Pets", amount: -36.93, description: "chicken feed", date: "2026-09-10" },
   { category: "Wellness", amount: -840, description: "Gym membership", date: "2026-09-10" },
   { category: "Shopping", amount: -13, description: "Gua sha", date: "2026-09-10" },
-  { category: "Cleaning", amount: -240, description: "trees", date: "2026-09-10" },
-  { category: "Car", amount: -730, date: "2026-09-10" },
+  { category: "Cleaning", amount: -280, description: "tree clean", date: "2026-09-10" },
+  { category: "Home", amount: -42.18, description: "tree limb dump", date: "2026-09-10" },
+  { category: "Car", amount: -730, description: "Gas", date: "2026-09-10" },
 
-  // Row 4 of the sheet (~week 3)
+  // ~week 3
   { category: "Home Fud", amount: -14, date: "2026-09-17" },
   { category: "Outside Fud", amount: -40, date: "2026-09-17" },
-  { category: "Partying", amount: -60, date: "2026-09-17" },
+  { category: "Partying", amount: -60, description: "Alcohol", date: "2026-09-17" },
   { category: "Wellness", amount: -840, description: "Gym membership", date: "2026-09-17" },
+  { category: "Shopping", amount: -218.59, description: "airpods", date: "2026-09-17" },
+  { category: "Home", amount: -36, description: "dish lids and SS chicken butt blug", date: "2026-09-17" },
 
-  // Row 5 of the sheet
   { category: "Home Fud", amount: -127, description: "Co-op groceries", date: "2026-09-06" },
+  { category: "Outside Fud", amount: -44, date: "2026-09-06" },
+  { category: "Partying", amount: -12.56, date: "2026-09-06" },
   { category: "Wellness", amount: -30, date: "2026-09-06" },
+  { category: "Shopping", amount: -169, description: "J chest protector", date: "2026-09-06" },
+  { category: "Home", amount: -1353, description: "sauna wood", date: "2026-09-06" },
 
-  // Rows 6-8 of the sheet
-  { category: "Home Fud", amount: -134, description: "Co-op groceries", date: "2026-09-20" },
+  { category: "Home Fud", amount: -135, description: "Co-op groceries", date: "2026-09-20" },
+  { category: "Outside Fud", amount: -7, date: "2026-09-20" },
+  { category: "Partying", amount: -15, date: "2026-09-20" },
+  { category: "Wellness", amount: -45, description: "rim tape and sealant", date: "2026-09-20" },
+  { category: "Shopping", amount: -25, description: "over ear headphone covers", date: "2026-09-20" },
+
   { category: "Home Fud", amount: -48, description: "Smith brothers 9/4", date: "2026-09-04" },
-  { category: "Home Fud", amount: -54, description: "Smith brothers 9/11", date: "2026-09-11" },
+  { category: "Outside Fud", amount: -54, date: "2026-09-04" },
+  { category: "Partying", amount: -31, description: "Ccc sauna", date: "2026-09-04" },
+
+  { category: "Home Fud", amount: -55, description: "Smith brothers 9/11", date: "2026-09-11" },
+  { category: "Outside Fud", amount: -20, description: "bikes fud", date: "2026-09-11" },
+  { category: "Partying", amount: -18, description: "bikes marg", date: "2026-09-11" },
+
+  { category: "Home Fud", amount: -255.08, date: "2026-09-24" },
+  { category: "Outside Fud", amount: -35, description: "Co-op lunch 9/24", date: "2026-09-24" },
+  { category: "Partying", amount: -76, description: "snoq travel", date: "2026-09-24" },
+
+  { category: "Home Fud", amount: -98, date: "2026-09-27" },
+
+  { category: "Home Fud", amount: -54, description: "Smith brothers", date: "2026-09-29" },
 ];
 
 export async function seedSeptemberDemoData(householdId) {
