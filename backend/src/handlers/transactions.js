@@ -60,18 +60,39 @@ async function create(user, payload) {
  * applyRule used to trigger a server-side saveRule() call — the client now
  * calls categoryRules.create itself beforehand (it's the only side that
  * can read the description to derive a pattern from), so this handler
- * just updates the two plaintext fields it's always been allowed to see.
+ * just updates the plaintext fields it's always been allowed to see
+ * (categoryId, reviewed, accountId, date), plus the opaque encryptedData
+ * blob — same validation as create() for accountId/categoryId, since a
+ * full edit (PRD's transaction-edit feature) can move a transaction to a
+ * different account/category, not just recategorize it.
  */
 async function update(user, payload) {
-  const { id, categoryId, reviewed } = payload || {};
+  const { id, categoryId, reviewed, accountId, date, encryptedData, nonce } = payload || {};
   const householdId = await getActiveHouseholdId(user);
 
   const tx = await db.transaction.findFirst({ where: { id, householdId } });
   if (!tx) throw new Error("not found");
 
   const data = {};
-  if (categoryId !== undefined) data.categoryId = categoryId;
+  if (categoryId !== undefined) {
+    if (categoryId) {
+      const category = await db.category.findFirst({ where: { id: categoryId, householdId } });
+      if (!category) throw new Error("category not found");
+    }
+    data.categoryId = categoryId;
+  }
   if (reviewed !== undefined) data.reviewed = Boolean(reviewed);
+  if (accountId !== undefined) {
+    const account = await db.account.findFirst({ where: { id: accountId, householdId } });
+    if (!account) throw new Error("account not found");
+    data.accountId = accountId;
+  }
+  if (date !== undefined) data.date = date;
+  if (encryptedData !== undefined || nonce !== undefined) {
+    if (!encryptedData || !nonce) throw new Error("encryptedData and nonce must be provided together");
+    data.encryptedData = encryptedData;
+    data.nonce = nonce;
+  }
 
   return db.transaction.update({ where: { id }, data });
 }

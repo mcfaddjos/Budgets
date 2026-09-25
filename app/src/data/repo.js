@@ -132,6 +132,33 @@ export async function createManualTransaction(
   });
 }
 
+/**
+ * Full edit (as opposed to recategorizeTransaction's category-only patch) —
+ * re-encrypts the whole plaintext bundle the same way createManualTransaction
+ * does, since amount/description/items/tax/tip all live inside encryptedData
+ * and there's no way to patch just one field of an opaque blob. accountId/
+ * categoryId/date stay plaintext columns, same as create.
+ */
+export async function updateManualTransaction(
+  householdId,
+  tx,
+  { accountId, categoryId, amount, description, fallbackDescription, date, items, tax, tip }
+) {
+  const dek = session.getHouseholdDek(householdId);
+  const finalDescription = (description || "").trim() || fallbackDescription || "";
+  const fields = {
+    description: finalDescription,
+    normalizedDescription: normalizeDescription(finalDescription),
+    amount,
+  };
+  if (items !== undefined) fields.items = items;
+  if (tax !== undefined) fields.tax = tax;
+  if (tip !== undefined) fields.tip = tip;
+  const { encryptedData, nonce } = await records.encryptRecord(dek, fields);
+  const updated = await api.updateTransaction(tx.id, { accountId, categoryId, date, encryptedData, nonce });
+  return { ...tx, ...fields, accountId: updated.accountId, categoryId: updated.categoryId, date: updated.date };
+}
+
 export async function recategorizeTransaction(householdId, tx, categoryId, applyRule) {
   if (applyRule) await saveRuleForDescription(householdId, tx.normalizedDescription, categoryId);
   const updated = await api.updateTransaction(tx.id, { categoryId });

@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
-import { useCategoryRules, useCreateManualTransaction, useTransactionFormOptions } from "../data/queries";
+import { useCategoryRules, useCreateManualTransaction, useTransactionFormOptions, useUpdateTransaction } from "../data/queries";
 import { categorize, normalizeDescription } from "../categorize/defaults";
 import FormModal from "./FormModal";
 import { useThemedStyles } from "../theme/ThemeContext";
@@ -26,11 +26,19 @@ const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
  * §8.6): { description, amount, date, items, tax, tip }. `items` being
  * present at all (even []) is what turns on the itemized-breakdown editor
  * — a plain manual entry never has it, so the section stays hidden there.
+ *
+ * editingTransaction (optional): a full decrypted transaction object,
+ * turns this into an edit form instead of an add form — the only way to
+ * fix a transaction's amount/description/date/category/items after the
+ * fact, since TransactionDetailModal is read-only. Takes priority over
+ * initialValues (the two are mutually exclusive in practice: a scan
+ * always opens in add mode, editing always opens from an existing row).
  */
-export default function AddTransactionModal({ visible, initialAccountId, initialValues, onClose, onSaved }) {
+export default function AddTransactionModal({ visible, initialAccountId, initialValues, editingTransaction, onClose, onSaved }) {
   const { data, isPending, isError, error, refetch } = useTransactionFormOptions();
   const { data: categoryRules = [] } = useCategoryRules();
   const createTransaction = useCreateManualTransaction();
+  const updateTransaction = useUpdateTransaction();
   const accounts = data?.accounts ?? [];
   const categories = data?.categories ?? [];
 
@@ -45,17 +53,17 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   const s = useThemedStyles(styles, darkStyles);
 
   useEffect(() => {
-    if (visible) {
-      setAmount(initialValues?.amount != null ? String(initialValues.amount) : "");
-      setDescription(initialValues?.description || "");
-      setDate(DATE_RE.test(initialValues?.date) ? initialValues.date : todayIso());
-      setCategoryId(null);
-      setAccountId(initialAccountId || null);
-      setItems(initialValues?.items ? initialValues.items.map((i) => ({ name: i.name, amount: String(i.amount) })) : undefined);
-      setTax(initialValues?.tax != null ? String(initialValues.tax) : "");
-      setTip(initialValues?.tip != null ? String(initialValues.tip) : "");
-    }
-  }, [visible, initialAccountId, initialValues]);
+    if (!visible) return;
+    const source = editingTransaction || initialValues;
+    setAmount(source?.amount != null ? String(source.amount) : "");
+    setDescription(source?.description || "");
+    setDate(DATE_RE.test(source?.date) ? source.date : todayIso());
+    setCategoryId(editingTransaction?.categoryId || null);
+    setAccountId(editingTransaction?.accountId || initialAccountId || null);
+    setItems(source?.items ? source.items.map((i) => ({ name: i.name, amount: String(i.amount) })) : undefined);
+    setTax(source?.tax != null ? String(source.tax) : "");
+    setTip(source?.tip != null ? String(source.tip) : "");
+  }, [visible, initialAccountId, initialValues, editingTransaction]);
 
   useEffect(() => {
     if (visible && !accountId && accounts.length > 0) setAccountId(accounts[0].id);
@@ -98,28 +106,34 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
       return;
     }
     const category = categories.find((c) => c.id === categoryId);
+    const payload = {
+      accountId,
+      categoryId,
+      amount: amt,
+      description: description.trim(),
+      fallbackDescription: category?.name,
+      date,
+      items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: null })),
+      tax: items !== undefined ? parseAmount(tax) : undefined,
+      tip: items !== undefined ? parseAmount(tip) : undefined,
+    };
     try {
-      const created = await createTransaction.mutateAsync({
-        accountId,
-        categoryId,
-        amount: amt,
-        description: description.trim(),
-        fallbackDescription: category?.name,
-        date,
-        items: items?.map((i) => ({ name: i.name.trim() || "Item", amount: parseAmount(i.amount), categoryId: null })),
-        tax: items !== undefined ? parseAmount(tax) : undefined,
-        tip: items !== undefined ? parseAmount(tip) : undefined,
-      });
-      Alert.alert("Transaction added", `${description.trim() || category?.name || "(no description)"} — $${amt.toFixed(2)}`);
-      onSaved(created);
+      const saved = editingTransaction
+        ? await updateTransaction.mutateAsync({ tx: editingTransaction, updates: payload })
+        : await createTransaction.mutateAsync(payload);
+      Alert.alert(
+        editingTransaction ? "Transaction updated" : "Transaction added",
+        `${description.trim() || category?.name || "(no description)"} — $${amt.toFixed(2)}`
+      );
+      onSaved(saved);
     } catch (err) {
-      Alert.alert("Couldn't add transaction", err.message);
+      Alert.alert(editingTransaction ? "Couldn't update transaction" : "Couldn't add transaction", err.message);
     }
   }
 
   return (
     <FormModal visible={visible} onClose={onClose}>
-      <Text style={s.modalTitle}>Add transaction</Text>
+      <Text style={s.modalTitle}>{editingTransaction ? "Edit transaction" : "Add transaction"}</Text>
 
       {isPending ? (
         <View style={s.loadingBox}>
@@ -233,9 +247,11 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
         <TouchableOpacity
           style={s.primaryButton}
           onPress={handleSave}
-          disabled={createTransaction.isPending || isPending || isError}
+          disabled={createTransaction.isPending || updateTransaction.isPending || isPending || isError}
         >
-          <Text style={s.primaryButtonText}>{createTransaction.isPending ? "Saving…" : "Save"}</Text>
+          <Text style={s.primaryButtonText}>
+            {createTransaction.isPending || updateTransaction.isPending ? "Saving…" : "Save"}
+          </Text>
         </TouchableOpacity>
       </View>
     </FormModal>

@@ -83,6 +83,7 @@ export default function TransactionsScreen() {
   const [pickerTx, setPickerTx] = useState(null);
   const [addTxVisible, setAddTxVisible] = useState(false);
   const [scanInitialValues, setScanInitialValues] = useState(null);
+  const [editingTx, setEditingTx] = useState(null);
   const [pendingReceiptPhoto, setPendingReceiptPhoto] = useState(null);
   const [scanning, setScanning] = useState(false);
   const [detailTx, setDetailTx] = useState(null);
@@ -135,6 +136,13 @@ export default function TransactionsScreen() {
     setAddTxVisible(false);
     setScanInitialValues(null);
     setPendingReceiptPhoto(null);
+    setEditingTx(null);
+  }
+
+  function handleEditTx(tx) {
+    setDetailTx(null);
+    setEditingTx(tx);
+    setAddTxVisible(true);
   }
 
   async function handleAddTxSaved(created) {
@@ -142,6 +150,7 @@ export default function TransactionsScreen() {
     const photo = pendingReceiptPhoto;
     setScanInitialValues(null);
     setPendingReceiptPhoto(null);
+    setEditingTx(null);
     // A scanned receipt can carry a real date from any month — jump the
     // view there so the transaction that was just added is actually
     // visible, instead of silently landing outside the current filter.
@@ -255,6 +264,7 @@ export default function TransactionsScreen() {
       <AddTransactionModal
         visible={addTxVisible}
         initialValues={scanInitialValues}
+        editingTransaction={editingTx}
         onClose={handleAddTxClose}
         onSaved={handleAddTxSaved}
       />
@@ -264,6 +274,7 @@ export default function TransactionsScreen() {
           transaction={detailTx}
           categoryName={categoryName(detailTx.categoryId)}
           onClose={() => setDetailTx(null)}
+          onEdit={handleEditTx}
         />
       ) : null}
 

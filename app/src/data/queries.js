@@ -106,6 +106,18 @@ export function useCreateManualTransaction() {
   });
 }
 
+export function useUpdateTransaction() {
+  const householdId = useHouseholdId();
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: ({ tx, updates }) => repo.updateManualTransaction(householdId, tx, updates),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["transactions", householdId] });
+      queryClient.invalidateQueries({ queryKey: ["budgets", householdId] });
+    },
+  });
+}
+
 export function useRecategorizeTransaction() {
   const householdId = useHouseholdId();
   const queryClient = useQueryClient();

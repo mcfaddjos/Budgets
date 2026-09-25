@@ -97,7 +97,7 @@ test("the same dedupKey is allowed again on a different account — uniqueness i
   ).resolves.toBeDefined();
 });
 
-test("update: categoryId and reviewed are the only mutable fields here", async () => {
+test("update: categoryId and reviewed", async () => {
   const created = await transactions.create(fixture.user, {
     accountId,
     date: "2026-09-13",
@@ -108,6 +108,66 @@ test("update: categoryId and reviewed are the only mutable fields here", async (
   const updated = await transactions.update(fixture.user, { id: created.id, reviewed: true });
   expect(updated.reviewed).toBe(true);
   expect(updated.categoryId).toBeNull();
+});
+
+test("update: accountId, date, and encryptedData/nonce (full edit) all apply", async () => {
+  const secondAccountId = (await accounts.create(fixture.user, { encryptedData: "ct-acc-3", nonce: "n" })).id;
+  const created = await transactions.create(fixture.user, {
+    accountId,
+    date: "2026-09-13",
+    encryptedData: "ct-before-edit",
+    nonce: "n-before",
+    dedupKey: "dedup-full-edit-test",
+  });
+
+  const updated = await transactions.update(fixture.user, {
+    id: created.id,
+    accountId: secondAccountId,
+    categoryId,
+    date: "2026-09-15",
+    encryptedData: "ct-after-edit",
+    nonce: "n-after",
+  });
+
+  expect(updated.accountId).toBe(secondAccountId);
+  expect(updated.categoryId).toBe(categoryId);
+  expect(updated.date).toBe("2026-09-15");
+  expect(updated.encryptedData).toBe("ct-after-edit");
+  expect(updated.nonce).toBe("n-after");
+});
+
+test("update rejects an accountId or categoryId from a different household", async () => {
+  const other = await createTestHousehold();
+  const theirAccount = await accounts.create(other.user, { encryptedData: "ct", nonce: "n" });
+  const theirCategory = await categories.create(other.user, { encryptedData: "ct", nonce: "n" });
+  const created = await transactions.create(fixture.user, {
+    accountId,
+    date: "2026-09-13",
+    encryptedData: "ct",
+    nonce: "n",
+    dedupKey: "dedup-cross-household-update-test",
+  });
+
+  await expect(
+    transactions.update(fixture.user, { id: created.id, accountId: theirAccount.id })
+  ).rejects.toThrow(/account not found/);
+  await expect(
+    transactions.update(fixture.user, { id: created.id, categoryId: theirCategory.id })
+  ).rejects.toThrow(/category not found/);
+  await cleanupFixture(other);
+});
+
+test("update rejects encryptedData without nonce (or vice versa) instead of silently corrupting the record", async () => {
+  const created = await transactions.create(fixture.user, {
+    accountId,
+    date: "2026-09-13",
+    encryptedData: "ct",
+    nonce: "n",
+    dedupKey: "dedup-partial-encrypted-update-test",
+  });
+  await expect(
+    transactions.update(fixture.user, { id: created.id, encryptedData: "ct-new" })
+  ).rejects.toThrow(/encryptedData and nonce must be provided together/);
 });
 
 test("remove is idempotent", async () => {

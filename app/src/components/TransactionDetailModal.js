@@ -17,7 +17,7 @@ function formatAmount(amount) {
  * have an image at all, and image bytes shouldn't load until someone
  * actually asks to see one.
  */
-export default function TransactionDetailModal({ transaction, categoryName, onClose }) {
+export default function TransactionDetailModal({ transaction, categoryName, onClose, onEdit }) {
   const [showReceipt, setShowReceipt] = useState(false);
   const receiptQuery = useReceiptImage(showReceipt ? transaction?.id : undefined);
   const s = useThemedStyles(styles, darkStyles);
@@ -76,9 +76,14 @@ export default function TransactionDetailModal({ transaction, categoryName, onCl
               <Text style={s.hint}>No receipt image was saved for this transaction.</Text>
             )}
           </ScrollView>
-          <TouchableOpacity style={s.closeButton} onPress={onClose}>
-            <Text style={s.closeButtonText}>Close</Text>
-          </TouchableOpacity>
+          <View style={s.actionsRow}>
+            <TouchableOpacity style={s.editButton} onPress={() => onEdit(transaction)}>
+              <Text style={s.editButtonText}>Edit</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={s.closeButton} onPress={onClose}>
+              <Text style={s.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
         </TouchableOpacity>
       </TouchableOpacity>
     </Modal>
@@ -103,7 +108,10 @@ const styles = StyleSheet.create({
   hint: { color: "#999", fontSize: 13, textAlign: "center", marginTop: 8 },
   receiptLoading: { marginTop: 16 },
   receiptImage: { width: "100%", height: 320, marginTop: 8, borderRadius: 8, backgroundColor: "#eee" },
-  closeButton: { alignItems: "center", paddingTop: 12 },
+  actionsRow: { flexDirection: "row", justifyContent: "space-between", alignItems: "center", paddingTop: 12 },
+  editButton: { backgroundColor: "#1a6ed8", borderRadius: 8, paddingVertical: 10, paddingHorizontal: 18 },
+  editButtonText: { color: "#fff", fontWeight: "600" },
+  closeButton: { alignItems: "center", paddingVertical: 10, paddingHorizontal: 18 },
   closeButtonText: { color: "#666", fontWeight: "600" },
 });
 
@@ -120,5 +128,6 @@ const darkStyles = {
   button: { backgroundColor: dark.accent },
   hint: { color: dark.textFaint },
   receiptImage: { backgroundColor: dark.bgAlt },
+  editButton: { backgroundColor: dark.accent },
   closeButtonText: { color: dark.textMuted },
 };
