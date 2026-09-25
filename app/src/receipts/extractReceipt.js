@@ -18,9 +18,41 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+/** For receipt-level aggregates (Total/TotalTax/Tip) — always a positive amount owed, so a negative value here is an OCR artifact, not real data. */
 function currencyAmount(field) {
   const amount = field?.valueCurrency?.amount;
   return amount == null ? null : Math.abs(amount);
+}
+
+/** For a line item's own price — unlike the aggregates above, a negative value here is real data (a discount/coupon line), not an OCR error, so the sign is preserved. */
+function itemAmount(field) {
+  return field?.valueCurrency?.amount ?? 0;
+}
+
+/**
+ * Costco (and other warehouse-club) receipts print a member discount as
+ * its own line directly beneath the item it applies to — same item
+ * number, an odd "/###-" price format, a negative amount — instead of
+ * adjusting that item's own price. Azure's OCR reads that as a separate
+ * "item" with a negative TotalPrice and a barcode-ish description, which
+ * would otherwise show up as its own confusing negative line. Folded into
+ * the item directly above instead, since that's what it actually is.
+ * Assumes reading order (top-to-bottom, matching how the receipt prints)
+ * — true for Document Intelligence's output. A negative line with nothing
+ * above it (shouldn't happen on a real receipt) is dropped rather than
+ * left as a floating negative item.
+ */
+function mergeDiscountLines(items) {
+  const merged = [];
+  for (const item of items) {
+    if (item.amount < 0 && merged.length > 0) {
+      merged[merged.length - 1].amount += item.amount;
+      continue;
+    }
+    if (item.amount < 0) continue;
+    merged.push({ ...item });
+  }
+  return merged;
 }
 
 /**
@@ -63,10 +95,11 @@ export async function extractReceipt(imageBase64) {
   if (!doc) throw new Error("Couldn't read that receipt — try a clearer, flatter photo");
   const fields = doc.fields || {};
 
-  const items = (fields.Items?.valueArray || []).map((item) => {
+  const rawItems = (fields.Items?.valueArray || []).map((item) => {
     const obj = item.valueObject || {};
-    return { name: obj.Description?.valueString || "Item", amount: currencyAmount(obj.TotalPrice) ?? 0 };
+    return { name: obj.Description?.valueString || "Item", amount: itemAmount(obj.TotalPrice) };
   });
+  const items = mergeDiscountLines(rawItems);
 
   return {
     vendor: fields.MerchantName?.valueString || null,

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ActivityIndicator, Alert, StyleSheet, Text, TextInput, TouchableOpacity, View } from "react-native";
+import { Picker } from "@react-native-picker/picker";
 import {
   useCategoryRules,
   useCreateManualTransaction,
@@ -79,13 +80,22 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     if (visible && !accountId && accounts.length > 0) setAccountId(accounts[0].id);
   }, [visible, accountId, accounts]);
 
-  /** Category guess for a scanned transaction (PRD §8.6) — reuses the same categorizer statement import uses, only runs once the categories/rules are actually loaded and only pre-fills, never overrides a choice the user already made. */
+  /**
+   * Category guess for a scanned transaction (PRD §8.6) — reuses the same
+   * categorizer statement import uses, only runs once the categories/rules
+   * are actually loaded and only pre-fills, never overrides a choice the
+   * user already made. Skipped entirely once there are items — for an
+   * itemized receipt, what's actually in the cart is a better signal for
+   * the transaction's category than the vendor name (a wine bar's items
+   * might be mostly food, not broadly "Dining"), so the item-derived guess
+   * below takes over instead.
+   */
   useEffect(() => {
-    if (!visible || !initialValues?.description || categoryId || categories.length === 0) return;
+    if (!visible || !initialValues?.description || categoryId || categories.length === 0 || items !== undefined) return;
     const categoryIdByName = Object.fromEntries(categories.map((c) => [c.name, c.id]));
     const guess = categorize(normalizeDescription(initialValues.description), categoryRules, categoryIdByName);
     if (guess) setCategoryId(guess);
-  }, [visible, initialValues, categories, categoryRules, categoryId]);
+  }, [visible, initialValues, categories, categoryRules, categoryId, items]);
 
   /**
    * Per-item category guess (PRD §8.6) — same cheap keyword-dictionary
@@ -124,6 +134,22 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     });
   }, [visible, items, categories, categoryRules]);
 
+  /**
+   * Once the items settle, the transaction's own category follows them:
+   * if every item that resolved a real category agrees, that becomes the
+   * transaction's category too — no reason to make someone tap "Dining"
+   * twice. If they don't agree, this deliberately leaves categoryId unset
+   * rather than guessing wrong; the chip row below shows a non-selectable
+   * "Custom" chip in that case so it's clear why nothing pre-filled, and
+   * the existing "Category required" validation on save makes sure a real
+   * pick happens before this can go through.
+   */
+  useEffect(() => {
+    if (!visible || categoryId || items === undefined) return;
+    const distinct = [...new Set(items.map((i) => i.categoryId).filter((id) => typeof id === "string" && id))];
+    if (distinct.length === 1) setCategoryId(distinct[0]);
+  }, [visible, items, categoryId]);
+
   function addItem() {
     setItems((prev) => [...(prev || []), { name: "", amount: "" }]);
   }
@@ -134,19 +160,29 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
     setItems((prev) => prev.filter((_, i) => i !== index));
   }
 
+  /** Live-updates the item as the dropdown scrolls/changes — the rule save happens once, on close (closeItemCategoryPicker), not on every intermediate value. */
+  function handleItemCategoryChange(value) {
+    if (itemCategoryPickerIndex === null) return;
+    updateItem(itemCategoryPickerIndex, "categoryId", value || false);
+  }
+
   /**
-   * Picking a category for an item also saves a household rule for it
-   * (same always-on learning as TransactionsScreen's whole-transaction
-   * recategorize) — best-effort: a failed rule save shouldn't block the
-   * pick itself, the category is already applied locally either way.
+   * Closing the dropdown also saves a household rule for whatever category
+   * ended up picked (same always-on learning as TransactionsScreen's
+   * whole-transaction recategorize) — best-effort: a failed rule save
+   * shouldn't block anything, the category is already applied locally.
    */
-  function handlePickItemCategory(category) {
+  function closeItemCategoryPicker() {
     const index = itemCategoryPickerIndex;
     setItemCategoryPickerIndex(null);
     if (index === null) return;
-    const itemName = items[index]?.name?.trim();
-    updateItem(index, "categoryId", category.id);
-    if (itemName) saveCategoryRule.mutateAsync({ normalizedDescription: normalizeDescription(itemName), categoryId: category.id }).catch(() => {});
+    const item = items[index];
+    const itemName = item?.name?.trim();
+    if (itemName && typeof item.categoryId === "string" && item.categoryId) {
+      saveCategoryRule
+        .mutateAsync({ normalizedDescription: normalizeDescription(itemName), categoryId: item.categoryId })
+        .catch(() => {});
+    }
   }
 
   async function handleSave() {
@@ -194,22 +230,30 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
   }
 
   const pickingItemCategory = itemCategoryPickerIndex !== null;
+  const distinctItemCategoryIds = items
+    ? [...new Set(items.map((i) => i.categoryId).filter((id) => typeof id === "string" && id))]
+    : [];
+  const itemCategoriesAreMixed = !categoryId && distinctItemCategoryIds.length > 1;
 
   return (
     <FormModal visible={visible} onClose={onClose}>
       {pickingItemCategory ? (
         <>
           <Text style={s.modalTitle}>Category for "{items[itemCategoryPickerIndex]?.name?.trim() || "item"}"</Text>
-          <View style={s.chipRow}>
+          <Picker
+            selectedValue={typeof items[itemCategoryPickerIndex]?.categoryId === "string" ? items[itemCategoryPickerIndex].categoryId : ""}
+            onValueChange={handleItemCategoryChange}
+            mode="dropdown"
+            style={s.itemCategoryPicker}
+          >
+            <Picker.Item label="Pick a category…" value="" />
             {categories.map((c) => (
-              <TouchableOpacity key={c.id} style={s.chip} onPress={() => handlePickItemCategory(c)}>
-                <Text style={s.chipText}>{c.name}</Text>
-              </TouchableOpacity>
+              <Picker.Item key={c.id} label={c.name} value={c.id} />
             ))}
-          </View>
+          </Picker>
           <View style={s.formActions}>
-            <TouchableOpacity style={s.secondaryButton} onPress={() => setItemCategoryPickerIndex(null)}>
-              <Text style={s.secondaryButtonText}>Back</Text>
+            <TouchableOpacity style={s.primaryButton} onPress={closeItemCategoryPicker}>
+              <Text style={s.primaryButtonText}>Done</Text>
             </TouchableOpacity>
           </View>
         </>
@@ -268,6 +312,11 @@ export default function AddTransactionModal({ visible, initialAccountId, initial
               <Text style={s.empty}>No categories yet.</Text>
             ) : (
               <View style={s.chipRow}>
+                {itemCategoriesAreMixed ? (
+                  <View style={[s.chip, s.chipActive]}>
+                    <Text style={[s.chipText, s.chipTextActive]}>Custom</Text>
+                  </View>
+                ) : null}
                 {categories.map((c) => (
                   <TouchableOpacity
                     key={c.id}
@@ -398,6 +447,7 @@ const styles = StyleSheet.create({
     paddingVertical: 4,
   },
   itemCategoryButtonText: { fontSize: 12, color: "#1a6ed8", fontWeight: "600" },
+  itemCategoryPicker: { marginBottom: 16 },
   addItemButton: { alignSelf: "flex-start", marginBottom: 16 },
   addItemButtonText: { color: "#1a6ed8", fontWeight: "600", fontSize: 13 },
   taxTipRow: { flexDirection: "row", gap: 10 },

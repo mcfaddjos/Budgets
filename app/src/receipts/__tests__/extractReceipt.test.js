@@ -79,7 +79,7 @@ describe("extractReceipt (Azure)", () => {
     expect(global.fetch).toHaveBeenCalledTimes(2);
   });
 
-  test("normalizes a negative total/tax/tip/item amount to positive — a scan is always a purchase, never a credit", async () => {
+  test("normalizes a negative total/tax/tip to positive — a receipt's total is never legitimately negative, unlike an item's own price", async () => {
     process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_ENDPOINT = "https://example.cognitiveservices.azure.com";
     process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_KEY = "test-key";
     const { extractReceipt } = loadModule();
@@ -103,7 +103,7 @@ describe("extractReceipt (Azure)", () => {
                   Total: { valueCurrency: { amount: -45.67 } },
                   Items: {
                     valueArray: [
-                      { valueObject: { Description: { valueString: "Gas" }, TotalPrice: { valueCurrency: { amount: -44.17 } } } },
+                      { valueObject: { Description: { valueString: "Gas" }, TotalPrice: { valueCurrency: { amount: 44.17 } } } },
                     ],
                   },
                 },
@@ -117,6 +117,98 @@ describe("extractReceipt (Azure)", () => {
     expect(result.total).toBe(45.67);
     expect(result.tax).toBe(1.5);
     expect(result.items[0].amount).toBe(44.17);
+  });
+
+  test("merges a Costco-style discount line (negative amount, printed directly below the item it discounts) into that item instead of showing it as its own negative line", async () => {
+    process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_ENDPOINT = "https://example.cognitiveservices.azure.com";
+    process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_KEY = "test-key";
+    const { extractReceipt } = loadModule();
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 202,
+        headers: { get: (name) => (name === "operation-location" ? "https://example.com/poll" : null) },
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          status: "succeeded",
+          analyzeResult: {
+            documents: [
+              {
+                confidence: 0.88,
+                fields: {
+                  MerchantName: { valueString: "Costco" },
+                  Total: { valueCurrency: { amount: 34.98 } },
+                  Items: {
+                    valueArray: [
+                      {
+                        valueObject: {
+                          Description: { valueString: "KIRKLAND PAPER TOWELS" },
+                          TotalPrice: { valueCurrency: { amount: 24.99 } },
+                        },
+                      },
+                      {
+                        valueObject: {
+                          Description: { valueString: "/24.99-" },
+                          TotalPrice: { valueCurrency: { amount: -5.0 } },
+                        },
+                      },
+                      {
+                        valueObject: {
+                          Description: { valueString: "ROTISSERIE CHICKEN" },
+                          TotalPrice: { valueCurrency: { amount: 4.99 } },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      });
+
+    const result = await extractReceipt("base64img");
+    expect(result.items).toEqual([
+      { name: "KIRKLAND PAPER TOWELS", amount: 19.99 },
+      { name: "ROTISSERIE CHICKEN", amount: 4.99 },
+    ]);
+  });
+
+  test("drops a negative item line with nothing above it to merge into, instead of leaving it as a floating negative item", async () => {
+    process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_ENDPOINT = "https://example.cognitiveservices.azure.com";
+    process.env.EXPO_PUBLIC_AZURE_DOC_INTEL_KEY = "test-key";
+    const { extractReceipt } = loadModule();
+
+    global.fetch = jest
+      .fn()
+      .mockResolvedValueOnce({
+        status: 202,
+        headers: { get: (name) => (name === "operation-location" ? "https://example.com/poll" : null) },
+      })
+      .mockResolvedValueOnce({
+        json: async () => ({
+          status: "succeeded",
+          analyzeResult: {
+            documents: [
+              {
+                confidence: 0.7,
+                fields: {
+                  Items: {
+                    valueArray: [
+                      { valueObject: { Description: { valueString: "/24.99-" }, TotalPrice: { valueCurrency: { amount: -5.0 } } } },
+                    ],
+                  },
+                },
+              },
+            ],
+          },
+        }),
+      });
+
+    const result = await extractReceipt("base64img");
+    expect(result.items).toEqual([]);
   });
 
   test("throws when the analyze call itself is rejected (non-202)", async () => {
